@@ -210,8 +210,19 @@ class _ProfilePageState extends State<ProfilePage> {
         Icons.logout,
         "Logout",
         [Colors.redAccent, Colors.red.shade700],
-            () {
-          Navigator.pushReplacementNamed(context, '/');
+            () async {
+          // 1. Clear the persistent session in SharedPreferences and memory
+          await ApiService.logout();
+
+          // 2. Clear the navigation stack and move to Login
+          // The (route) => false predicate ensures ALL previous screens are destroyed.
+          if (context.mounted) {
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/',
+                  (route) => false,
+            );
+          }
         },
       ),
     ],
