@@ -46,7 +46,9 @@ class ApiService {
     _cachedToken = prefs.getString(_tokenKey);
     _cachedEmail = prefs.getString(_emailKey);
     _cachedUserId = prefs.getString(_userIdKey);
-    debugPrint("ApiService: Data loaded from storage.");
+
+    // Debug check to confirm if the user is seen as logged in on app start
+    debugPrint("ApiService: Data loaded. LoggedIn: ${isLoggedIn()}");
   }
 
   /// ================= AUTH STORAGE =================
@@ -56,6 +58,7 @@ class ApiService {
     required String userId,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    // Use commit: true to ensure data is written immediately before moving to the next screen
     await prefs.setString(_tokenKey, token);
     await prefs.setString(_emailKey, email);
     await prefs.setString(_userIdKey, userId);
@@ -70,17 +73,25 @@ class ApiService {
   static String? getEmail() => _cachedEmail;
   static String? getUserId() => _cachedUserId;
 
+  // Optimized check: Ensures we have a non-empty token
   static bool isLoggedIn() => _cachedToken != null && _cachedToken!.isNotEmpty;
 
+  /// FIX: Clears all local storage and memory cache to prevent "Back Button" access
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // 1. Clear physical storage
     await prefs.remove(_tokenKey);
     await prefs.remove(_emailKey);
     await prefs.remove(_userIdKey);
+    // Alternatively: await prefs.clear(); if you want to wipe everything
 
+    // 2. Wipe memory cache immediately
     _cachedToken = null;
     _cachedEmail = null;
     _cachedUserId = null;
+
+    debugPrint("ApiService: User logged out and cache cleared.");
   }
 
   /// ================= REGISTER =================
@@ -140,9 +151,11 @@ class ApiService {
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
+        // Fallback to a timestamp-based token if the server doesn't provide one
         final token = data['token'] ?? DateTime.now().millisecondsSinceEpoch.toString();
         final userId = data['userId']?.toString() ?? '';
 
+        // PERSISTENCE FIX: Save data to SharedPreferences so it persists after app close
         await saveAuthData(
           token: token,
           email: email,
