@@ -6,10 +6,8 @@
   <component name="ChangeListManager">
     <list default="true" id="b3cc85d8-4294-490f-9bd6-972737d6cf1d" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/hotels_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/hotels_page.dart" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/profile.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/profile.dart" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Services/api_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Services/api_service.dart" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/main.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/main.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/paying_guests_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/paying_guests_page.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/pg_details_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/pg_details_page.dart" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

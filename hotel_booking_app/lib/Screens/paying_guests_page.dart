@@ -114,42 +114,52 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
     }
   }
 
+  // FIXED: Improved key normalization and Image routing
   Map<String, dynamic> _ensureKeys(Map<String, dynamic> src) {
     final Map<String, dynamic> out = {}..addAll(src);
 
-    final rawImgs = out['PG_Images'];
+    // Normalize Image Key
+    final rawImgs = out['PG_Images'] ?? out['pg_images'];
     List<String> imgs = [];
 
     if (rawImgs != null) {
       if (rawImgs is List) {
         imgs = rawImgs.map((e) => e.toString().trim()).toList();
-      } else if (rawImgs is String) {
-        try {
-          final parsed = json.decode(rawImgs);
-          if (parsed is List) {
-            imgs = parsed.map((e) => e.toString().trim()).toList();
-          } else {
-            imgs = rawImgs.split(',').map((e) => e.trim()).toList();
-          }
-        } catch (_) {
-          imgs = rawImgs.split(',').map((e) => e.trim()).toList();
+      } else {
+        String s = rawImgs.toString().trim();
+        // Handle JSON array or comma separated string from DB/Backend
+        if (s.startsWith('[') && s.endsWith(']')) {
+          try {
+            final parsed = json.decode(s);
+            if (parsed is List) {
+              imgs = parsed.map((e) => e.toString().trim()).toList();
+            }
+          } catch (_) {}
+        }
+        if (imgs.isEmpty) {
+          imgs = s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
         }
       }
     }
 
     final cleaned = imgs.map((url) {
-      url = url.trim().replaceAll("\\", "/");
+      String link = url.trim().replaceAll("\\", "/");
 
-      if (url.startsWith("http://") || url.startsWith("https://")) {
-        return url.replaceAll("[", "").replaceAll("]", "");
+      // Handle localhost to emulator conversion
+      if (link.contains("localhost")) {
+        link = link.replaceAll("localhost", "10.0.2.2");
       }
 
-      url = url.replaceAll("[", "").replaceAll("]", "");
-      final parts = url.split("/").map((e) => Uri.encodeComponent(e)).join("/");
-      return "${ApiConfig.baseUrl}/hotel_images/$parts";
+      // If it's a Supabase/External link, leave it alone
+      if (link.toLowerCase().startsWith("http://") || link.toLowerCase().startsWith("https://")) {
+        return link;
+      }
+
+      // Otherwise, it's a local storage file
+      return "${ApiConfig.baseUrl}/hotel_images/$link";
     }).toList();
 
-    out['PG_Images'] = cleaned;
+    out['PG_Images'] = cleaned; // Store as a List for the UI to map over
     return out;
   }
 
@@ -160,8 +170,8 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
     }
     final q = query.toLowerCase();
     final results = pgsList.where((pg) {
-      final name = (pg['PG_Name'] ?? '').toString().toLowerCase();
-      final city = (pg['City'] ?? '').toString().toLowerCase();
+      final name = (pg['PG_Name'] ?? pg['pg_name'] ?? '').toString().toLowerCase();
+      final city = (pg['City'] ?? pg['city'] ?? '').toString().toLowerCase();
       final desc = (pg['Description'] ?? '').toString().toLowerCase();
       return name.contains(q) || city.contains(q) || desc.contains(q);
     }).toList();
@@ -206,12 +216,7 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
 
   Future<void> _openMap(String? hotelLocation) async {
     if (hotelLocation == null || hotelLocation.trim().isEmpty) return;
-
-    // Use deviceLocationDisplay as current location
-    final userLocation = Uri.encodeComponent(deviceLocationDisplay);
-    final destination = Uri.encodeComponent(hotelLocation);
-    final url = Uri.parse("https://www.google.com/maps/dir/?api=1&origin=$userLocation&destination=$destination&travelmode=driving");
-
+    final url = Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(hotelLocation)}");
     if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
@@ -241,7 +246,6 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
         child: SafeArea(
           child: Column(
             children: [
-              // Top bar
               Row(
                 children: [
                   IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
@@ -286,7 +290,6 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
                   ),
                 ],
               ),
-              // Search + filter
               Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Row(
@@ -333,7 +336,6 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
                   ],
                 ),
               ),
-              // PG list
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: fetchPgData,
@@ -351,27 +353,33 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
                       itemCount: filteredPgs.length,
                       itemBuilder: (context, index) {
                         final pg = filteredPgs[index];
+
+                        // Accessing images as the normalized List
                         List<String> images = [];
-                        if (pg['PG_Images'] != null && pg['PG_Images'] is List) {
+                        if (pg['PG_Images'] != null) {
                           images = List<String>.from(pg['PG_Images']);
                         }
-                        final pgName = (pg['PG_Name'] ?? 'Unknown PG').toString();
-                        final city = (pg['City'] ?? '').toString();
-                        final state = (pg['State'] ?? '').toString();
-                        final country = (pg['Country'] ?? '').toString();
-                        final pincode = (pg['Pincode'] ?? '').toString();
-                        final address = (pg['Hotel_Location'] ?? pg['Address'] ?? '').toString();
-                        final ratingRaw = (pg['Rating'] ?? '0').toString();
+
+                        final pgName = (pg['PG_Name'] ?? pg['pg_name'] ?? 'Unknown PG').toString();
+                        final city = (pg['City'] ?? pg['city'] ?? '').toString();
+                        final state = (pg['State'] ?? pg['state'] ?? '').toString();
+                        final country = (pg['Country'] ?? pg['country'] ?? '').toString();
+                        final pincode = (pg['Pincode'] ?? pg['pincode'] ?? '').toString();
+                        final address = (pg['Address'] ?? pg['address'] ?? '').toString();
+
+                        final ratingRaw = (pg['Rating'] ?? pg['rating'] ?? '0').toString();
                         final ratingDouble = double.tryParse(ratingRaw) ?? 0;
                         final ratingInt = ratingDouble.floor();
-                        final roomPriceRaw = (pg['Room_Price'] ?? '').toString();
+
+                        final roomPriceRaw = (pg['Room_Price'] ?? pg['room_price'] ?? '').toString();
                         String roomPrice = '';
                         try {
                           final matches = RegExp(r'\d+').allMatches(roomPriceRaw);
                           final parsed = matches.map((m) => num.tryParse(m.group(0)!) ?? 0).where((v) => v > 0).toList();
                           if (parsed.isNotEmpty) roomPrice = parsed.reduce((a, b) => a < b ? a : b).toString();
                         } catch (_) {}
-                        final amenitiesRaw = (pg['Amenities'] ?? '').toString();
+
+                        final amenitiesRaw = (pg['Amenities'] ?? pg['amenities'] ?? '').toString();
                         final amenities = amenitiesRaw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
                         bool isFavorite = false;
 
@@ -457,7 +465,6 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
                                     ],
                                   ),
                                   const SizedBox(height: 8),
-                                  // PG Name + Rating Row
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
@@ -471,7 +478,6 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
                                     ],
                                   ),
                                   const SizedBox(height: 4),
-                                  // Address with Map icon
                                   GestureDetector(
                                     onTap: () => _openMap(address),
                                     child: Row(
@@ -488,10 +494,8 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
                                     ),
                                   ),
                                   const SizedBox(height: 6),
-                                  // Price
                                   Text(roomPrice.isNotEmpty ? "Starts from ₹$roomPrice/month" : "", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                                   const SizedBox(height: 6),
-                                  // Amenities
                                   SizedBox(
                                     height: 26,
                                     child: ListView.separated(
