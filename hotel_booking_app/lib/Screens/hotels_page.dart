@@ -50,7 +50,6 @@ class _HotelsPageState extends State<HotelsPage>
         CurvedAnimation(parent: _animationController, curve: Curves.easeInOut));
 
     // Try to get device location first (non-blocking) and then fetch hotels.
-    // We'll still fetch hotels immediately (so user sees content fast).
     fetchHotelData();
     _initDeviceLocation();
   }
@@ -60,12 +59,9 @@ class _HotelsPageState extends State<HotelsPage>
       final name = await app_filters.getCurrentLocationDisplayName();
       if (!mounted) return;
       if (name != null && name.toString().trim().isNotEmpty) {
-        // If location changed from detecting or manual, update and attempt fetch by city.
         final previous = deviceLocationDisplay;
         setState(() => deviceLocationDisplay = name.toString());
 
-        // If previously we hadn't got data for a specific city (or deviceLocationDisplay changed),
-        // fetch by city to give a location-based list.
         if ((previous == 'Detecting location...' ||
             previous == 'Tap to select location' ||
             previous == 'Manual Location' ||
@@ -91,7 +87,6 @@ class _HotelsPageState extends State<HotelsPage>
     super.dispose();
   }
 
-  // Fetch top-level hotels (no server-side filters) OR by city if provided.
   Future<void> fetchHotelData({String? city}) async {
     setState(() {
       isLoading = true;
@@ -139,7 +134,6 @@ class _HotelsPageState extends State<HotelsPage>
     }
   }
 
-  // Ensures keys exist in multiple name formats and normalizes Hotel_Images to comma-separated list
   Map<String, dynamic> _ensureKeys(Map<String, dynamic> src) {
     final Map<String, dynamic> out = {};
     src.forEach((k, v) {
@@ -170,7 +164,6 @@ class _HotelsPageState extends State<HotelsPage>
     copyIfMissing(['Hotel_Images', 'hotel_images'], 'Hotel_Images');
     copyIfMissing(['Amenities', 'amenities'], 'Amenities');
 
-    // Image normalization
     final rawImgs = out['Hotel_Images'];
     List<String> imgs = [];
 
@@ -182,6 +175,7 @@ class _HotelsPageState extends State<HotelsPage>
             .toList();
       } else {
         final s = rawImgs.toString().trim();
+        // Handle JSON array or comma-separated string
         if (s.startsWith('[') && s.endsWith(']')) {
           try {
             final parsed = json.decode(s);
@@ -200,12 +194,12 @@ class _HotelsPageState extends State<HotelsPage>
       }
     }
 
-    // replace localhost with emulator host and ensure full URL
     final fixed = imgs.map((e) {
       String link = e;
       if (e.contains("localhost")) {
         link = e.replaceAll("localhost", "10.0.2.2");
       }
+      // If it's not a full URL (Supabase/External), assume it's a local storage path
       if (!link.startsWith("http://") && !link.startsWith("https://")) {
         link = "http://10.0.2.2:8080/hotel_images/$link";
       }
@@ -213,7 +207,6 @@ class _HotelsPageState extends State<HotelsPage>
     }).toList();
 
     out['Hotel_Images'] = fixed.join(',');
-
     return out;
   }
 
@@ -230,7 +223,6 @@ class _HotelsPageState extends State<HotelsPage>
     return first + rest;
   }
 
-  // Local quick filter (instant)
   void filterHotelsLocal(String query) {
     if (query.trim().isEmpty) {
       setState(() => filteredHotels = hotels);
@@ -250,17 +242,12 @@ class _HotelsPageState extends State<HotelsPage>
     });
   }
 
-  // Unified search handler: local immediate + remote debounce
   void onSearchChanged(String value) {
-    // immediate local filter
     filterHotelsLocal(value);
-
-    // debounce remote search
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 450), () async {
       final q = value.trim();
       if (q.isEmpty) {
-        // when search cleared, restore filteredHotels from current server list (if available)
         setState(() {
           filteredHotels = hotels;
         });
@@ -268,10 +255,7 @@ class _HotelsPageState extends State<HotelsPage>
       }
 
       try {
-        // If query looks like a city, pass as city param for remote search
         final isLikelyCity = _looksLikeCity(q);
-
-        // remoteSearchHotels expects (String query, {String? city, Map<String,dynamic>? filters})
         final remoteResult = await app_filters.remoteSearchHotels(q,
             city: isLikelyCity ? q : null, filters: currentFilters);
 
@@ -284,12 +268,8 @@ class _HotelsPageState extends State<HotelsPage>
           setState(() {
             filteredHotels = normalized;
           });
-        } else {
-          // keep local results if remote returns empty
         }
-      } catch (e) {
-        // ignore remote errors; local results already shown
-      }
+      } catch (e) {}
     });
   }
 
@@ -313,7 +293,6 @@ class _HotelsPageState extends State<HotelsPage>
     });
   }
 
-  // Opens location selector implemented in app_filters.dart (or falls back)
   Future<void> _onTapLocation() async {
     try {
       final selected = await app_filters.openLocationSelector(context);
@@ -321,7 +300,6 @@ class _HotelsPageState extends State<HotelsPage>
         setState(() {
           deviceLocationDisplay = selected;
         });
-        // optionally fetch hotels for that city
         await fetchHotelData(city: selected);
       }
     } catch (e) {
@@ -331,18 +309,12 @@ class _HotelsPageState extends State<HotelsPage>
     }
   }
 
-  // Opens filter sheet implemented in app_filters.dart (or shows placeholder)
   Future<void> _onTapFilters() async {
     try {
       final updatedFilters =
       await app_filters.openFilterSheet(context, currentFilters);
-
-      // If user didn't apply changes, updatedFilters will be null.
       if (updatedFilters == null) return;
-
-      // If updatedFilters is empty map -> interpret as "clear filters" / reset
       if (updatedFilters.isEmpty) {
-        // Clear filters locally and re-fetch full list
         setState(() {
           currentFilters = {};
           searchController.clear();
@@ -351,18 +323,15 @@ class _HotelsPageState extends State<HotelsPage>
         return;
       }
 
-      // Otherwise apply the returned filters
       setState(() {
         currentFilters = Map<String, dynamic>.from(updatedFilters);
       });
 
-      // If filter contains a city, fetch hotels for that city (server endpoint supports ?city=)
       if (currentFilters.containsKey('city') &&
           currentFilters['city'] != null &&
           currentFilters['city'].toString().trim().isNotEmpty) {
         await fetchHotelData(city: currentFilters['city']?.toString());
       } else {
-        // otherwise ask app_filters to fetch hotels with filters (backend)
         final results =
         await app_filters.fetchHotelsWithFilters(currentFilters, widget.type);
         if (results is List) {
@@ -373,10 +342,9 @@ class _HotelsPageState extends State<HotelsPage>
               .toList();
           setState(() {
             filteredHotels = normalized;
-            hotels = normalized; // update local cache to reflect server-applied filtering
+            hotels = normalized;
           });
         } else {
-          // fallback local filter
           _applyLocalFilterFallback();
         }
       }
@@ -387,7 +355,6 @@ class _HotelsPageState extends State<HotelsPage>
     }
   }
 
-  // Explicit "Clear Filters" that user can press on the Hotels page (useful if Reset inside sheet does not close)
   Future<void> _clearFiltersDirectly() async {
     setState(() {
       currentFilters = {};
@@ -397,34 +364,22 @@ class _HotelsPageState extends State<HotelsPage>
   }
 
   void _applyLocalFilterFallback() {
-    // currentFilters may use 'rating' or 'minRating'; handle both
     final minPrice = (currentFilters['minPrice'] ?? 0) as num;
     final maxPrice = (currentFilters['maxPrice'] ?? double.infinity) as num;
-
-    // rating value may be stored as 'rating'
-    final minRating =
-    (currentFilters['rating'] ?? currentFilters['minRating'] ?? 0) as num;
+    final minRating = (currentFilters['rating'] ?? currentFilters['minRating'] ?? 0) as num;
 
     final results = hotels.where((hotel) {
       final rawPrice = (hotel['Room_Price'] ?? '').toString();
-
-      // parse all integers and pick the minimum (robust)
       num price = 0;
       try {
         final matches = RegExp(r'\d+').allMatches(rawPrice);
         final parsed = matches.map((m) => num.tryParse(m.group(0)!) ?? 0).where((v) => v > 0).toList();
-        if (parsed.isEmpty) {
-          price = 0;
-        } else {
-          price = parsed.reduce((a, b) => a < b ? a : b);
-        }
+        price = parsed.isEmpty ? 0 : parsed.reduce((a, b) => a < b ? a : b);
       } catch (_) {
         price = 0;
       }
-
       final ratingRaw = (hotel['Rating'] ?? '0').toString();
       final rating = double.tryParse(ratingRaw) ?? 0;
-
       return price >= minPrice && price <= maxPrice && rating >= minRating;
     }).toList();
 
@@ -447,16 +402,12 @@ class _HotelsPageState extends State<HotelsPage>
         child: SafeArea(
           child: Column(
             children: [
-              // Top AppBar row - back button left, title center, location + 3-dot on right
               Row(
                 children: [
-                  // Back button
                   IconButton(
                     icon: const Icon(Icons.arrow_back),
                     onPressed: () => Navigator.pop(context),
                   ),
-
-                  // Title (center-ish)
                   Expanded(
                     child: Text(
                       "${widget.type}s",
@@ -464,8 +415,6 @@ class _HotelsPageState extends State<HotelsPage>
                       textAlign: TextAlign.center,
                     ),
                   ),
-
-                  // Location (moved to right). Tapping opens selector; displayed text auto-updated by _initDeviceLocation.
                   GestureDetector(
                     onTap: _onTapLocation,
                     child: Padding(
@@ -480,9 +429,7 @@ class _HotelsPageState extends State<HotelsPage>
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(8),
-                                boxShadow: [
-                                  BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)
-                                ],
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)],
                               ),
                               child: const Icon(Icons.location_on_outlined, color: Colors.green),
                             ),
@@ -504,13 +451,10 @@ class _HotelsPageState extends State<HotelsPage>
                   ),
                 ],
               ),
-
-              // Search + Filter row
               Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Row(
                   children: [
-                    // Filter icon on left of search
                     GestureDetector(
                       onTap: _onTapFilters,
                       child: Container(
@@ -523,10 +467,7 @@ class _HotelsPageState extends State<HotelsPage>
                         child: const Icon(Icons.tune_rounded, color: Colors.green),
                       ),
                     ),
-
                     const SizedBox(width: 8),
-
-                    // Clear filters button (explicit) - helps if Reset inside sheet does not close
                     if (currentFilters.isNotEmpty)
                       GestureDetector(
                         onTap: _clearFiltersDirectly,
@@ -536,13 +477,10 @@ class _HotelsPageState extends State<HotelsPage>
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(12),
-                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)],
                           ),
                           child: const Text("Clear", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.green)),
                         ),
                       ),
-
-                    // Search field
                     Expanded(
                       child: TextField(
                         controller: searchController,
@@ -575,8 +513,6 @@ class _HotelsPageState extends State<HotelsPage>
                   ],
                 ),
               ),
-
-              // Hotel list area (keeps full original card UI & behavior)
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: fetchHotelData,
@@ -585,27 +521,15 @@ class _HotelsPageState extends State<HotelsPage>
                     child: isLoading
                         ? const Center(child: CircularProgressIndicator(color: Colors.green))
                         : (errorMessage != null)
-                        ? Center(
-                      child: Text(
-                        errorMessage!,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.red),
-                        textAlign: TextAlign.center,
-                      ),
-                    )
+                        ? Center(child: Text(errorMessage!, style: const TextStyle(fontSize: 16, color: Colors.red), textAlign: TextAlign.center))
                         : filteredHotels.isEmpty
-                        ? Center(
-                      child: Text(
-                        "No ${widget.type}s found.",
-                        style: const TextStyle(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.w500),
-                      ),
-                    )
+                        ? Center(child: Text("No ${widget.type}s found.", style: const TextStyle(fontSize: 16, color: Colors.grey)))
                         : ListView.builder(
                       padding: const EdgeInsets.all(12),
                       physics: const BouncingScrollPhysics(),
                       itemCount: filteredHotels.length,
                       itemBuilder: (context, index) {
                         final hotel = filteredHotels[index];
-
                         List<String> images = [];
                         if (hotel['Hotel_Images'] != null && hotel['Hotel_Images'].toString().isNotEmpty) {
                           images = hotel['Hotel_Images'].toString().split(',').map((e) => e.trim()).toList();
@@ -623,20 +547,12 @@ class _HotelsPageState extends State<HotelsPage>
                         final ratingInt = ratingDouble.floor();
                         final roomPriceRaw = (hotel['Room_Price'] ?? '').toString();
 
-                        // --- FIXED: Extract all numeric portions and pick the lowest value ---
                         String roomPrice;
                         try {
                           final matches = RegExp(r'\d+').allMatches(roomPriceRaw);
                           final parsed = matches.map((m) => num.tryParse(m.group(0)!) ?? 0).where((v) => v > 0).toList();
-                          if (parsed.isEmpty) {
-                            roomPrice = '';
-                          } else {
-                            final minPrice = parsed.reduce((a, b) => a < b ? a : b);
-                            roomPrice = minPrice.toString();
-                          }
-                        } catch (_) {
-                          roomPrice = '';
-                        }
+                          roomPrice = parsed.isEmpty ? '' : parsed.reduce((a, b) => a < b ? a : b).toString();
+                        } catch (_) { roomPrice = ''; }
 
                         final amenitiesRaw = (hotel['Amenities'] ?? '').toString();
                         final amenities = amenitiesRaw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
@@ -682,32 +598,16 @@ class _HotelsPageState extends State<HotelsPage>
                                                 fit: BoxFit.cover,
                                                 loadingBuilder: (context, child, progress) {
                                                   if (progress == null) return child;
-                                                  return Container(
-                                                    color: Colors.grey.shade200,
-                                                    child: const Center(child: CircularProgressIndicator()),
-                                                  );
+                                                  return Container(color: Colors.grey.shade200, child: const Center(child: CircularProgressIndicator()));
                                                 },
                                                 errorBuilder: (context, error, stackTrace) {
-                                                  return Container(
-                                                    color: Colors.grey.shade200,
-                                                    child: const Center(child: Icon(Icons.broken_image)),
-                                                  );
+                                                  return Container(color: Colors.grey.shade200, child: const Center(child: Icon(Icons.broken_image)));
                                                 },
                                               );
                                             },
                                           ),
                                         )
-                                            : Container(
-                                          height: 140,
-                                          color: Colors.green.shade50,
-                                          child: const Center(
-                                            child: Icon(
-                                              Icons.photo,
-                                              size: 40,
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                        ),
+                                            : Container(height: 140, color: Colors.green.shade50, child: const Center(child: Icon(Icons.photo, size: 40, color: Colors.grey))),
                                       ),
                                       Positioned(
                                         top: 8,
@@ -715,23 +615,16 @@ class _HotelsPageState extends State<HotelsPage>
                                         child: StatefulBuilder(
                                           builder: (context, setFavState) => GestureDetector(
                                             onTap: () {
-                                              setFavState(() {
-                                                isFavorite = !isFavorite;
-                                              });
+                                              setFavState(() { isFavorite = !isFavorite; });
                                             },
                                             child: Container(
                                               padding: const EdgeInsets.all(6),
                                               decoration: BoxDecoration(
                                                 shape: BoxShape.circle,
-                                                gradient: isFavorite
-                                                    ? const LinearGradient(colors: [Colors.redAccent, Colors.red], begin: Alignment.topLeft, end: Alignment.bottomRight)
-                                                    : null,
+                                                gradient: isFavorite ? const LinearGradient(colors: [Colors.redAccent, Colors.red]) : null,
                                                 color: isFavorite ? null : Colors.white70,
                                               ),
-                                              child: Icon(
-                                                isFavorite ? Icons.favorite : Icons.favorite_border,
-                                                color: isFavorite ? Colors.white : Colors.green,
-                                              ),
+                                              child: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.white : Colors.green),
                                             ),
                                           ),
                                         ),
@@ -743,26 +636,13 @@ class _HotelsPageState extends State<HotelsPage>
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       Expanded(
-                                        child: Text(
-                                          hotelName,
-                                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
+                                        child: Text(hotelName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
                                       ),
                                       Row(
                                         children: [
-                                          ...List.generate(
-                                            ratingInt,
-                                                (i) => const Icon(Icons.star, size: 14, color: Colors.orangeAccent),
-                                          ),
-                                          if (ratingInt == 0)
-                                            const Text('No rating', style: TextStyle(fontSize: 12, color: Colors.black54)),
-                                          if (ratingInt > 0)
-                                            Padding(
-                                              padding: const EdgeInsets.only(left: 4),
-                                              child: Text(ratingDouble.toStringAsFixed(1), style: const TextStyle(fontSize: 12, color: Colors.black54)),
-                                            ),
+                                          ...List.generate(ratingInt, (i) => const Icon(Icons.star, size: 14, color: Colors.orangeAccent)),
+                                          if (ratingInt == 0) const Text('No rating', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                                          if (ratingInt > 0) Padding(padding: const EdgeInsets.only(left: 4), child: Text(ratingDouble.toStringAsFixed(1), style: const TextStyle(fontSize: 12, color: Colors.black54))),
                                         ],
                                       )
                                     ],
@@ -772,14 +652,7 @@ class _HotelsPageState extends State<HotelsPage>
                                     children: [
                                       const Icon(Icons.location_on, size: 14, color: Colors.green),
                                       const SizedBox(width: 4),
-                                      Expanded(
-                                        child: Text(
-                                          "$hotelAddress, $hotelCity, $hotelState, $hotelCountry, $hotelPincode",
-                                          style: const TextStyle(fontSize: 12, color: Colors.black54),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
+                                      Expanded(child: Text("$hotelAddress, $hotelCity, $hotelState, $hotelCountry, $hotelPincode", style: const TextStyle(fontSize: 12, color: Colors.black54), maxLines: 2, overflow: TextOverflow.ellipsis)),
                                     ],
                                   ),
                                   const SizedBox(height: 6),
@@ -792,13 +665,7 @@ class _HotelsPageState extends State<HotelsPage>
                                           margin: const EdgeInsets.only(right: 6),
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                           decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
-                                          child: Row(
-                                            children: [
-                                              _getAmenityIcon(a),
-                                              const SizedBox(width: 4),
-                                              Text(a, style: const TextStyle(fontSize: 10, color: Colors.black87)),
-                                            ],
-                                          ),
+                                          child: Row(children: [_getAmenityIcon(a), const SizedBox(width: 4), Text(a, style: const TextStyle(fontSize: 10))]),
                                         );
                                       }).toList(),
                                     ),
@@ -806,10 +673,7 @@ class _HotelsPageState extends State<HotelsPage>
                                   const SizedBox(height: 6),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(colors: [Colors.green, Colors.lightGreen], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
+                                    decoration: BoxDecoration(gradient: const LinearGradient(colors: [Colors.green, Colors.lightGreen]), borderRadius: BorderRadius.circular(8)),
                                     child: Text("Starts from ₹${roomPrice.isEmpty ? 'N/A' : roomPrice} / night", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                   ),
                                 ],
@@ -829,9 +693,7 @@ class _HotelsPageState extends State<HotelsPage>
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onNavTap,
-        backgroundColor: Colors.white,
         selectedItemColor: Colors.green,
-        unselectedItemColor: Colors.grey,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: "Bookings"),
