@@ -27,12 +27,8 @@ class _HotelsPageState extends State<HotelsPage>
   String? errorMessage;
   int _selectedIndex = 0;
 
-  // location display (shown on top-right)
   String deviceLocationDisplay = 'Detecting location...';
-  // filters state placeholder (will be passed to filters handler)
   Map<String, dynamic> currentFilters = {};
-
-  // debounce for remote search
   Timer? _debounce;
 
   late AnimationController _animationController;
@@ -41,16 +37,12 @@ class _HotelsPageState extends State<HotelsPage>
   @override
   void initState() {
     super.initState();
-
-    // Start animation
     _animationController =
     AnimationController(vsync: this, duration: const Duration(seconds: 1))
       ..repeat(reverse: true);
     _animation = Tween<double>(begin: 0.7, end: 1.0).animate(
         CurvedAnimation(parent: _animationController, curve: Curves.easeInOut));
 
-    // Try to get device location first (non-blocking) and then fetch hotels.
-    // We'll still fetch hotels immediately (so user sees content fast).
     fetchHotelData();
     _initDeviceLocation();
   }
@@ -60,12 +52,9 @@ class _HotelsPageState extends State<HotelsPage>
       final name = await app_filters.getCurrentLocationDisplayName();
       if (!mounted) return;
       if (name != null && name.toString().trim().isNotEmpty) {
-        // If location changed from detecting or manual, update and attempt fetch by city.
         final previous = deviceLocationDisplay;
         setState(() => deviceLocationDisplay = name.toString());
 
-        // If previously we hadn't got data for a specific city (or deviceLocationDisplay changed),
-        // fetch by city to give a location-based list.
         if ((previous == 'Detecting location...' ||
             previous == 'Tap to select location' ||
             previous == 'Manual Location' ||
@@ -91,7 +80,6 @@ class _HotelsPageState extends State<HotelsPage>
     super.dispose();
   }
 
-  // Fetch top-level hotels (no server-side filters) OR by city if provided.
   Future<void> fetchHotelData({String? city}) async {
     setState(() {
       isLoading = true;
@@ -139,7 +127,6 @@ class _HotelsPageState extends State<HotelsPage>
     }
   }
 
-  // Ensures keys exist in multiple name formats and normalizes Hotel_Images to comma-separated list
   Map<String, dynamic> _ensureKeys(Map<String, dynamic> src) {
     final Map<String, dynamic> out = {};
     src.forEach((k, v) {
@@ -170,50 +157,34 @@ class _HotelsPageState extends State<HotelsPage>
     copyIfMissing(['Hotel_Images', 'hotel_images'], 'Hotel_Images');
     copyIfMissing(['Amenities', 'amenities'], 'Amenities');
 
-    // Image normalization
     final rawImgs = out['Hotel_Images'];
     List<String> imgs = [];
 
     if (rawImgs != null) {
       if (rawImgs is List) {
-        imgs = rawImgs
-            .map((e) => e.toString().trim())
-            .where((e) => e.isNotEmpty)
-            .toList();
+        imgs = rawImgs.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
       } else {
         final s = rawImgs.toString().trim();
-        if (s.startsWith('[') && s.endsWith(']')) {
-          try {
-            final parsed = json.decode(s);
-            if (parsed is List) {
-              imgs = parsed.map((e) => e.toString().trim()).toList();
-            }
-          } catch (_) {}
-        }
-        if (imgs.isEmpty) {
-          imgs = s
-              .split(',')
-              .map((e) => e.trim())
-              .where((e) => e.isNotEmpty)
-              .toList();
-        }
+        // Support comma-separated strings (typical for Supabase URL sets)
+        imgs = s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
       }
     }
 
-    // replace localhost with emulator host and ensure full URL
     final fixed = imgs.map((e) {
       String link = e;
+      // Handle local development redirects
       if (e.contains("localhost")) {
         link = e.replaceAll("localhost", "10.0.2.2");
       }
+      // If it's already a full Supabase/web URL, leave it.
+      // Otherwise, assume it's a relative path from local storage.
       if (!link.startsWith("http://") && !link.startsWith("https://")) {
-        link = "http://10.0.2.2:8080/hotel_images/$link";
+        link = "${ApiConfig.baseUrl}/hotel_images/$link";
       }
       return link;
     }).toList();
 
     out['Hotel_Images'] = fixed.join(',');
-
     return out;
   }
 
@@ -223,14 +194,10 @@ class _HotelsPageState extends State<HotelsPage>
     final parts = nonAlpha.split(' ').where((p) => p.isNotEmpty).toList();
     if (parts.isEmpty) return s;
     final first = parts.first.toLowerCase();
-    final rest = parts
-        .skip(1)
-        .map((p) => p[0].toUpperCase() + p.substring(1).toLowerCase())
-        .join();
+    final rest = parts.skip(1).map((p) => p[0].toUpperCase() + p.substring(1).toLowerCase()).join();
     return first + rest;
   }
 
-  // Local quick filter (instant)
   void filterHotelsLocal(String query) {
     if (query.trim().isEmpty) {
       setState(() => filteredHotels = hotels);
@@ -238,9 +205,8 @@ class _HotelsPageState extends State<HotelsPage>
     }
     final q = query.toLowerCase();
     final results = hotels.where((hotel) {
-      final name =
-      (hotel['Hotel_Name'] ?? hotel['hotelName'] ?? '').toString().toLowerCase();
-      final city = (hotel['City'] ?? hotel['city'] ?? '').toString().toLowerCase();
+      final name = (hotel['Hotel_Name'] ?? '').toString().toLowerCase();
+      final city = (hotel['City'] ?? '').toString().toLowerCase();
       final desc = (hotel['Description'] ?? '').toString().toLowerCase();
       return name.contains(q) || city.contains(q) || desc.contains(q);
     }).toList();
@@ -250,28 +216,18 @@ class _HotelsPageState extends State<HotelsPage>
     });
   }
 
-  // Unified search handler: local immediate + remote debounce
   void onSearchChanged(String value) {
-    // immediate local filter
     filterHotelsLocal(value);
-
-    // debounce remote search
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 450), () async {
       final q = value.trim();
       if (q.isEmpty) {
-        // when search cleared, restore filteredHotels from current server list (if available)
-        setState(() {
-          filteredHotels = hotels;
-        });
+        setState(() => filteredHotels = hotels);
         return;
       }
 
       try {
-        // If query looks like a city, pass as city param for remote search
         final isLikelyCity = _looksLikeCity(q);
-
-        // remoteSearchHotels expects (String query, {String? city, Map<String,dynamic>? filters})
         final remoteResult = await app_filters.remoteSearchHotels(q,
             city: isLikelyCity ? q : null, filters: currentFilters);
 
@@ -284,12 +240,8 @@ class _HotelsPageState extends State<HotelsPage>
           setState(() {
             filteredHotels = normalized;
           });
-        } else {
-          // keep local results if remote returns empty
         }
-      } catch (e) {
-        // ignore remote errors; local results already shown
-      }
+      } catch (e) {}
     });
   }
 
@@ -313,36 +265,23 @@ class _HotelsPageState extends State<HotelsPage>
     });
   }
 
-  // Opens location selector implemented in app_filters.dart (or falls back)
   Future<void> _onTapLocation() async {
     try {
       final selected = await app_filters.openLocationSelector(context);
       if (selected != null && selected is String && selected.trim().isNotEmpty) {
-        setState(() {
-          deviceLocationDisplay = selected;
-        });
-        // optionally fetch hotels for that city
+        setState(() => deviceLocationDisplay = selected);
         await fetchHotelData(city: selected);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to select location: $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to select location: $e')));
     }
   }
 
-  // Opens filter sheet implemented in app_filters.dart (or shows placeholder)
   Future<void> _onTapFilters() async {
     try {
-      final updatedFilters =
-      await app_filters.openFilterSheet(context, currentFilters);
-
-      // If user didn't apply changes, updatedFilters will be null.
+      final updatedFilters = await app_filters.openFilterSheet(context, currentFilters);
       if (updatedFilters == null) return;
-
-      // If updatedFilters is empty map -> interpret as "clear filters" / reset
       if (updatedFilters.isEmpty) {
-        // Clear filters locally and re-fetch full list
         setState(() {
           currentFilters = {};
           searchController.clear();
@@ -351,20 +290,16 @@ class _HotelsPageState extends State<HotelsPage>
         return;
       }
 
-      // Otherwise apply the returned filters
       setState(() {
         currentFilters = Map<String, dynamic>.from(updatedFilters);
       });
 
-      // If filter contains a city, fetch hotels for that city (server endpoint supports ?city=)
       if (currentFilters.containsKey('city') &&
           currentFilters['city'] != null &&
           currentFilters['city'].toString().trim().isNotEmpty) {
         await fetchHotelData(city: currentFilters['city']?.toString());
       } else {
-        // otherwise ask app_filters to fetch hotels with filters (backend)
-        final results =
-        await app_filters.fetchHotelsWithFilters(currentFilters, widget.type);
+        final results = await app_filters.fetchHotelsWithFilters(currentFilters, widget.type);
         if (results is List) {
           final normalized = results
               .map<Map<String, dynamic>>((e) =>
@@ -373,21 +308,17 @@ class _HotelsPageState extends State<HotelsPage>
               .toList();
           setState(() {
             filteredHotels = normalized;
-            hotels = normalized; // update local cache to reflect server-applied filtering
+            hotels = normalized;
           });
         } else {
-          // fallback local filter
           _applyLocalFilterFallback();
         }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to open filters: $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to open filters: $e')));
     }
   }
 
-  // Explicit "Clear Filters" that user can press on the Hotels page (useful if Reset inside sheet does not close)
   Future<void> _clearFiltersDirectly() async {
     setState(() {
       currentFilters = {};
@@ -397,30 +328,18 @@ class _HotelsPageState extends State<HotelsPage>
   }
 
   void _applyLocalFilterFallback() {
-    // currentFilters may use 'rating' or 'minRating'; handle both
     final minPrice = (currentFilters['minPrice'] ?? 0) as num;
     final maxPrice = (currentFilters['maxPrice'] ?? double.infinity) as num;
-
-    // rating value may be stored as 'rating'
-    final minRating =
-    (currentFilters['rating'] ?? currentFilters['minRating'] ?? 0) as num;
+    final minRating = (currentFilters['rating'] ?? currentFilters['minRating'] ?? 0) as num;
 
     final results = hotels.where((hotel) {
       final rawPrice = (hotel['Room_Price'] ?? '').toString();
-
-      // parse all integers and pick the minimum (robust)
       num price = 0;
       try {
         final matches = RegExp(r'\d+').allMatches(rawPrice);
         final parsed = matches.map((m) => num.tryParse(m.group(0)!) ?? 0).where((v) => v > 0).toList();
-        if (parsed.isEmpty) {
-          price = 0;
-        } else {
-          price = parsed.reduce((a, b) => a < b ? a : b);
-        }
-      } catch (_) {
-        price = 0;
-      }
+        price = parsed.isEmpty ? 0 : parsed.reduce((a, b) => a < b ? a : b);
+      } catch (_) {}
 
       final ratingRaw = (hotel['Rating'] ?? '0').toString();
       final rating = double.tryParse(ratingRaw) ?? 0;
@@ -428,9 +347,7 @@ class _HotelsPageState extends State<HotelsPage>
       return price >= minPrice && price <= maxPrice && rating >= minRating;
     }).toList();
 
-    setState(() {
-      filteredHotels = results;
-    });
+    setState(() => filteredHotels = results);
   }
 
   @override
@@ -447,378 +364,150 @@ class _HotelsPageState extends State<HotelsPage>
         child: SafeArea(
           child: Column(
             children: [
-              // Top AppBar row - back button left, title center, location + 3-dot on right
               Row(
                 children: [
-                  // Back button
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-
-                  // Title (center-ish)
+                  IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
                   Expanded(
-                    child: Text(
-                      "${widget.type}s",
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                    ),
+                    child: Text("${widget.type}s", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
                   ),
-
-                  // Location (moved to right). Tapping opens selector; displayed text auto-updated by _initDeviceLocation.
                   GestureDetector(
                     onTap: _onTapLocation,
                     child: Padding(
                       padding: const EdgeInsets.only(right: 6.0),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           ScaleTransition(
                             scale: _animation,
                             child: Container(
                               padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(8),
-                                boxShadow: [
-                                  BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)
-                                ],
-                              ),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)]),
                               child: const Icon(Icons.location_on_outlined, color: Colors.green),
                             ),
                           ),
                           const SizedBox(height: 4),
-                          SizedBox(
-                            width: 120,
-                            child: Text(
-                              deviceLocationDisplay,
-                              style: const TextStyle(fontSize: 12, color: Colors.black87),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
+                          SizedBox(width: 120, child: Text(deviceLocationDisplay, style: const TextStyle(fontSize: 12, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center)),
                         ],
                       ),
                     ),
                   ),
                 ],
               ),
-
-              // Search + Filter row
               Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Row(
                   children: [
-                    // Filter icon on left of search
                     GestureDetector(
                       onTap: _onTapFilters,
                       child: Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)],
-                        ),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)]),
                         child: const Icon(Icons.tune_rounded, color: Colors.green),
                       ),
                     ),
-
                     const SizedBox(width: 8),
-
-                    // Clear filters button (explicit) - helps if Reset inside sheet does not close
                     if (currentFilters.isNotEmpty)
                       GestureDetector(
                         onTap: _clearFiltersDirectly,
                         child: Container(
                           margin: const EdgeInsets.only(right: 8),
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)],
-                          ),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
                           child: const Text("Clear", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.green)),
                         ),
                       ),
-
-                    // Search field
                     Expanded(
                       child: TextField(
                         controller: searchController,
                         onChanged: onSearchChanged,
-                        textInputAction: TextInputAction.search,
                         decoration: InputDecoration(
                           hintText: 'Search by name or city...',
                           filled: true,
                           fillColor: Colors.white,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                          suffixIcon: IconButton(
-                            icon: const Icon(Icons.search),
-                            onPressed: () {
-                              final q = searchController.text.trim();
-                              if (q.isEmpty) {
-                                filterHotelsLocal('');
-                              } else {
-                                onSearchChanged(q);
-                              }
-                            },
-                          ),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                          suffixIcon: const Icon(Icons.search),
                         ),
-                        textCapitalization: TextCapitalization.words,
                       ),
                     ),
                   ],
                 ),
               ),
-
-              // Hotel list area (keeps full original card UI & behavior)
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: fetchHotelData,
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 400),
-                    child: isLoading
-                        ? const Center(child: CircularProgressIndicator(color: Colors.green))
-                        : (errorMessage != null)
-                        ? Center(
-                      child: Text(
-                        errorMessage!,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.red),
-                        textAlign: TextAlign.center,
-                      ),
-                    )
-                        : filteredHotels.isEmpty
-                        ? Center(
-                      child: Text(
-                        "No ${widget.type}s found.",
-                        style: const TextStyle(fontSize: 16, color: Colors.grey, fontWeight: FontWeight.w500),
-                      ),
-                    )
-                        : ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: filteredHotels.length,
-                      itemBuilder: (context, index) {
-                        final hotel = filteredHotels[index];
+                  child: isLoading
+                      ? const Center(child: CircularProgressIndicator(color: Colors.green))
+                      : (errorMessage != null)
+                      ? Center(child: Text(errorMessage!, style: const TextStyle(color: Colors.red)))
+                      : filteredHotels.isEmpty
+                      ? const Center(child: Text("No hotels found."))
+                      : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: filteredHotels.length,
+                    itemBuilder: (context, index) {
+                      final hotel = filteredHotels[index];
+                      List<String> images = [];
+                      if (hotel['Hotel_Images'] != null) {
+                        images = hotel['Hotel_Images'].toString().split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+                      }
 
-                        List<String> images = [];
-                        if (hotel['Hotel_Images'] != null && hotel['Hotel_Images'].toString().isNotEmpty) {
-                          images = hotel['Hotel_Images'].toString().split(',').map((e) => e.trim()).toList();
-                        }
+                      String roomPrice = '';
+                      try {
+                        final matches = RegExp(r'\d+').allMatches((hotel['Room_Price'] ?? '').toString());
+                        final parsed = matches.map((m) => num.tryParse(m.group(0)!) ?? 0).where((v) => v > 0).toList();
+                        roomPrice = parsed.isEmpty ? 'N/A' : parsed.reduce((a, b) => a < b ? a : b).toString();
+                      } catch (_) { roomPrice = 'N/A'; }
 
-                        final hotelName = (hotel['Hotel_Name'] ?? 'Unknown Hotel').toString();
-                        final hotelCity = (hotel['City'] ?? '').toString();
-                        final hotelState = (hotel['State'] ?? '').toString();
-                        final hotelCountry = (hotel['Country'] ?? '').toString();
-                        final hotelPincode = (hotel['Pincode'] ?? '').toString();
-                        final hotelAddress = (hotel['Address'] ?? '').toString();
+                      final ratingDouble = double.tryParse(hotel['Rating'].toString()) ?? 0;
+                      final amenities = (hotel['Amenities'] ?? '').toString().split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
 
-                        final ratingRaw = (hotel['Rating'] ?? '0').toString();
-                        final ratingDouble = double.tryParse(ratingRaw) ?? 0;
-                        final ratingInt = ratingDouble.floor();
-                        final roomPriceRaw = (hotel['Room_Price'] ?? '').toString();
-
-                        // --- FIXED: Extract all numeric portions and pick the lowest value ---
-                        String roomPrice;
-                        try {
-                          final matches = RegExp(r'\d+').allMatches(roomPriceRaw);
-                          final parsed = matches.map((m) => num.tryParse(m.group(0)!) ?? 0).where((v) => v > 0).toList();
-                          if (parsed.isEmpty) {
-                            roomPrice = '';
-                          } else {
-                            final minPrice = parsed.reduce((a, b) => a < b ? a : b);
-                            roomPrice = minPrice.toString();
-                          }
-                        } catch (_) {
-                          roomPrice = '';
-                        }
-
-                        final amenitiesRaw = (hotel['Amenities'] ?? '').toString();
-                        final amenities = amenitiesRaw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-
-                        bool isFavorite = false;
-
-                        return GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => HotelDetailsPage(
-                                  hotel: hotel,
-                                  user: widget.user,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Card(
-                            color: const Color(0xFFF0FFF0),
-                            margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                            elevation: 6,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            child: Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Stack(
-                                    children: [
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(12),
-                                        child: images.isNotEmpty
-                                            ? SizedBox(
+                      return GestureDetector(
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => HotelDetailsPage(hotel: hotel, user: widget.user))),
+                        child: Card(
+                          color: const Color(0xFFF0FFF0),
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          elevation: 6,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: images.isNotEmpty
+                                      ? SizedBox(
+                                    height: 140,
+                                    child: PageView.builder(
+                                      itemCount: images.length,
+                                      itemBuilder: (context, idx) {
+                                        return Image.network(
+                                          images[idx],
+                                          width: double.infinity,
                                           height: 140,
-                                          child: PageView.builder(
-                                            itemCount: images.length,
-                                            itemBuilder: (context, idx) {
-                                              return Image.network(
-                                                images[idx],
-                                                width: double.infinity,
-                                                height: 140,
-                                                fit: BoxFit.cover,
-                                                loadingBuilder: (context, child, progress) {
-                                                  if (progress == null) return child;
-                                                  return Container(
-                                                    color: Colors.grey.shade200,
-                                                    child: const Center(child: CircularProgressIndicator()),
-                                                  );
-                                                },
-                                                errorBuilder: (context, error, stackTrace) {
-                                                  return Container(
-                                                    color: Colors.grey.shade200,
-                                                    child: const Center(child: Icon(Icons.broken_image)),
-                                                  );
-                                                },
-                                              );
-                                            },
-                                          ),
-                                        )
-                                            : Container(
-                                          height: 140,
-                                          color: Colors.green.shade50,
-                                          child: const Center(
-                                            child: Icon(
-                                              Icons.photo,
-                                              size: 40,
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      Positioned(
-                                        top: 8,
-                                        right: 8,
-                                        child: StatefulBuilder(
-                                          builder: (context, setFavState) => GestureDetector(
-                                            onTap: () {
-                                              setFavState(() {
-                                                isFavorite = !isFavorite;
-                                              });
-                                            },
-                                            child: Container(
-                                              padding: const EdgeInsets.all(6),
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                gradient: isFavorite
-                                                    ? const LinearGradient(colors: [Colors.redAccent, Colors.red], begin: Alignment.topLeft, end: Alignment.bottomRight)
-                                                    : null,
-                                                color: isFavorite ? null : Colors.white70,
-                                              ),
-                                              child: Icon(
-                                                isFavorite ? Icons.favorite : Icons.favorite_border,
-                                                color: isFavorite ? Colors.white : Colors.green,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          hotelName,
-                                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      Row(
-                                        children: [
-                                          ...List.generate(
-                                            ratingInt,
-                                                (i) => const Icon(Icons.star, size: 14, color: Colors.orangeAccent),
-                                          ),
-                                          if (ratingInt == 0)
-                                            const Text('No rating', style: TextStyle(fontSize: 12, color: Colors.black54)),
-                                          if (ratingInt > 0)
-                                            Padding(
-                                              padding: const EdgeInsets.only(left: 4),
-                                              child: Text(ratingDouble.toStringAsFixed(1), style: const TextStyle(fontSize: 12, color: Colors.black54)),
-                                            ),
-                                        ],
-                                      )
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.location_on, size: 14, color: Colors.green),
-                                      const SizedBox(width: 4),
-                                      Expanded(
-                                        child: Text(
-                                          "$hotelAddress, $hotelCity, $hotelState, $hotelCountry, $hotelPincode",
-                                          style: const TextStyle(fontSize: 12, color: Colors.black54),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  SizedBox(
-                                    height: 40,
-                                    child: ListView(
-                                      scrollDirection: Axis.horizontal,
-                                      children: amenities.take(10).map((a) {
-                                        return Container(
-                                          margin: const EdgeInsets.only(right: 6),
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
-                                          child: Row(
-                                            children: [
-                                              _getAmenityIcon(a),
-                                              const SizedBox(width: 4),
-                                              Text(a, style: const TextStyle(fontSize: 10, color: Colors.black87)),
-                                            ],
-                                          ),
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (ctx, err, st) => Container(color: Colors.grey.shade200, child: const Icon(Icons.broken_image)),
                                         );
-                                      }).toList(),
+                                      },
                                     ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(colors: [Colors.green, Colors.lightGreen], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text("Starts from ₹${roomPrice.isEmpty ? 'N/A' : roomPrice} / night", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                  ),
-                                ],
-                              ),
+                                  )
+                                      : Container(height: 140, color: Colors.green.shade50, child: const Icon(Icons.photo, size: 40)),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(hotel['Hotel_Name'] ?? 'Unknown', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                Text("${hotel['Address'] ?? ''}, ${hotel['City'] ?? ''}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 6,
+                                  children: amenities.take(3).map((a) => Chip(label: Text(a, style: const TextStyle(fontSize: 10)), backgroundColor: Colors.green.shade50, padding: EdgeInsets.zero)).toList(),
+                                ),
+                                Text("Starts from ₹$roomPrice / night", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                              ],
                             ),
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -829,9 +518,7 @@ class _HotelsPageState extends State<HotelsPage>
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onNavTap,
-        backgroundColor: Colors.white,
         selectedItemColor: Colors.green,
-        unselectedItemColor: Colors.grey,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: "Bookings"),
@@ -839,15 +526,5 @@ class _HotelsPageState extends State<HotelsPage>
         ],
       ),
     );
-  }
-
-  Icon _getAmenityIcon(String amenity) {
-    final lower = amenity.toLowerCase();
-    if (lower.contains('wifi')) return const Icon(Icons.wifi, size: 14);
-    if (lower.contains('pool')) return const Icon(Icons.pool, size: 14);
-    if (lower.contains('gym')) return const Icon(Icons.fitness_center, size: 14);
-    if (lower.contains('parking')) return const Icon(Icons.local_parking, size: 14);
-    if (lower.contains('restaurant')) return const Icon(Icons.restaurant, size: 14);
-    return const Icon(Icons.check_circle_outline, size: 14);
   }
 }
