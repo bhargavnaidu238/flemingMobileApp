@@ -1,20 +1,31 @@
-import 'dart:convert';
+import 'dart:convert'; // Fixes 'json' undefined
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http; // Fixes 'http' undefined
+import 'package:supabase_flutter/supabase_flutter.dart'; // Fixes 'Supabase' undefined
 
-import 'partner_portal/web_screens/web_login.dart';
-import 'partner_portal/web_screens/web_register.dart';
-import 'partner_portal/web_screens/web_dashboard_page.dart';
-import 'partner_portal/web_screens/Domain_Landing_Page.dart';
-import 'services/api_service.dart';
+// Internal Screen Imports
+import 'screens/login_page.dart';
+import 'screens/register_page.dart';
+import 'screens/home_page.dart' as home;
+import 'screens/booking_function.dart';
+import 'screens/profile.dart';
+import 'screens/booking_history_page.dart';
+import 'screens/hotels_page.dart';
+import 'screens/paying_guests_page.dart' as pgs;
+
+// Service Imports
+import 'services/api_service.dart'; // Fixes 'ApiConfig' undefined
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Load user data from local storage so it's available after a refresh
+  await ApiService.init();
+
   await _initializeSupabaseFromBackend();
 
-  runApp(const MyApp());
+  // REMOVED 'const' - Fixes: Cannot invoke a non-'const' constructor
+  runApp(MyApp());
 }
 
 // ================= FETCH SUPABASE CONFIG FROM BACKEND =================
@@ -45,105 +56,109 @@ Future<void> _initializeSupabaseFromBackend() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: "Hotel Booking App",
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(primarySwatch: Colors.indigo),
-
-      // ================= AUTO CHECK LOGIN ON APP START =================
-      initialRoute: ApiService.isLoggedIn() ? '/dashboard' : '/',
-
-      onGenerateRoute: _generateRoute,
-    );
-  }
-
-  // ================== NO TRANSITION ROUTE ==================
-  Route<dynamic> _noTransitionRoute(Widget page, RouteSettings settings) {
-    return PageRouteBuilder(
-      settings: settings,
-      pageBuilder: (_, __, ___) => page,
-      transitionDuration: Duration.zero,
-      reverseTransitionDuration: Duration.zero,
-    );
-  }
-
-  // ================== ROUTE GENERATOR ==================
-  Route<dynamic> _generateRoute(RouteSettings settings) {
-    final bool loggedIn = ApiService.isLoggedIn();
-
-    switch (settings.name) {
-
-    // ================= LANDING PAGE =================
-      case '/':
-        return _noTransitionRoute(const LandingPage(), settings);
-
-    // ================= LOGIN PAGE =================
-      case '/weblogin':
-        return _noTransitionRoute(const WebLoginPage(), settings);
-
-    // ================= REGISTER PAGE =================
-      case '/registerlogin':
-        return _noTransitionRoute(const WebRegisterPage(), settings);
-
-    // ================= DASHBOARD (PROTECTED) =================
-      case '/dashboard':
-
-        if (!loggedIn) {
-          debugPrint("Blocked unauthorized dashboard access.");
-          return _noTransitionRoute(const WebLoginPage(), settings);
-        }
-
-        final args = settings.arguments as Map<String, String>?;
-
-        if (args == null) {
-          final email = ApiService.getEmail();
-          final userId = ApiService.getUserId();
-
-          if (email == null || userId == null) {
-            return _noTransitionRoute(const WebLoginPage(), settings);
-          }
-
-          return _noTransitionRoute(
-            WebDashboardPage(
-              partnerDetails: {
-                "email": email,
-                "userId": userId,
-              },
-            ),
-            settings,
-          );
-        }
-
-        return _noTransitionRoute(
-          WebDashboardPage(partnerDetails: args),
-          settings,
-        );
-
-    // ================= DEFAULT =================
-      default:
-        return _errorScreen("Route not found: ${settings.name}");
-    }
-  }
-
-  // ================= ERROR SCREEN =================
-  MaterialPageRoute _errorScreen(String msg) {
-    return MaterialPageRoute(
-      builder: (_) => Scaffold(
-        body: Center(
-          child: Text(
-            msg,
-            style: const TextStyle(
-              color: Colors.red,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
+      title: 'Hotel Booking App',
+      theme: ThemeData(
+        primarySwatch: Colors.lime,
+        scaffoldBackgroundColor: Colors.white,
       ),
+      // Automatically redirect to home if data was found in local storage
+      initialRoute: ApiService.isLoggedIn() ? '/home' : '/',
+      onGenerateRoute: (settings) {
+        switch (settings.name) {
+          case '/':
+            return MaterialPageRoute(builder: (_) => LoginPage());
+
+          case '/register':
+            return MaterialPageRoute(builder: (_) => RegisterPage());
+
+          case '/home':
+          // Recovery logic: Use cached data if arguments are missing
+            final user = settings.arguments as Map<String, dynamic>? ?? {
+              'userId': ApiService.getUserId() ?? '',
+              'name': 'User',
+              'email': ApiService.getEmail() ?? '',
+              'mobile': ''
+            };
+            return MaterialPageRoute(builder: (_) => home.HomePage(user: user));
+
+          case '/hotels':
+            final args = settings.arguments as Map<String, dynamic>? ?? {};
+            final user = args['user'] as Map<String, dynamic>? ?? {
+              'userId': ApiService.getUserId() ?? '',
+              'name': 'User',
+              'email': ApiService.getEmail() ?? '',
+              'mobile': ''
+            };
+            final type = args['type'] ?? "all";
+            return MaterialPageRoute(
+              builder: (_) => HotelsPage(user: user, type: type),
+            );
+
+          case '/paying_guest':
+            final args = settings.arguments as Map<String, dynamic>? ?? {};
+            final user = args['user'] as Map<String, dynamic>? ?? {
+              'userId': ApiService.getUserId() ?? '',
+              'name': 'User',
+              'email': ApiService.getEmail() ?? '',
+              'mobile': ''
+            };
+            final type = args['type'] ?? "PG";
+            return MaterialPageRoute(
+              builder: (_) => pgs.PgsPage(user: user, type: type),
+            );
+
+          case '/booking':
+            final args = settings.arguments as Map<String, dynamic>? ?? {};
+            final Map<String, dynamic> hotelOrPg =
+                args['hotel'] as Map<String, dynamic>? ??
+                    args['pg'] as Map<String, dynamic>? ?? {};
+
+            final Map<String, dynamic> userData =
+                args['user'] as Map<String, dynamic>? ?? {
+                  'userId': ApiService.getUserId() ?? '',
+                  'name': 'User',
+                  'email': ApiService.getEmail() ?? '',
+                  'mobile': ''
+                };
+
+            final String userId = (args['userId'] ?? userData['userId'] ?? '').toString();
+
+            return MaterialPageRoute(
+              builder: (context) => BookingPage(
+                hotel: hotelOrPg,
+                user: userData,
+                userId: userId,
+              ),
+            );
+
+          case '/history':
+            final args = settings.arguments as Map<String, dynamic>? ?? {};
+            final email = args['email'] ?? ApiService.getEmail() ?? '';
+            final userId = args['userId'] ?? ApiService.getUserId() ?? '';
+            return MaterialPageRoute(
+              builder: (_) => BookingHistoryPage(email: email, userId: userId),
+            );
+
+          case '/profile':
+            final args = settings.arguments as Map<String, dynamic>? ?? {};
+            final email = args['email'] ?? ApiService.getEmail() ?? '';
+            final userId = args['userId'] ?? ApiService.getUserId() ?? '';
+            return MaterialPageRoute(
+              builder: (_) => ProfilePage(email: email, userId: userId),
+            );
+
+          default:
+            return MaterialPageRoute(
+              builder: (_) => const Scaffold(
+                body: Center(child: Text('Route not found')),
+              ),
+            );
+        }
+      },
+      debugShowCheckedModeBanner: false,
     );
   }
 }
