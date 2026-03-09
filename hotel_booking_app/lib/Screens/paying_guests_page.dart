@@ -114,52 +114,37 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
     }
   }
 
-  // FIXED: Improved key normalization and Image routing
   Map<String, dynamic> _ensureKeys(Map<String, dynamic> src) {
     final Map<String, dynamic> out = {}..addAll(src);
 
-    // Normalize Image Key
-    final rawImgs = out['PG_Images'] ?? out['pg_images'];
+    // Normalize keys for PG images
+    final rawImgs = out['pg_images'] ?? out['PG_Images'];
     List<String> imgs = [];
 
     if (rawImgs != null) {
       if (rawImgs is List) {
         imgs = rawImgs.map((e) => e.toString().trim()).toList();
-      } else {
-        String s = rawImgs.toString().trim();
-        // Handle JSON array or comma separated string from DB/Backend
-        if (s.startsWith('[') && s.endsWith(']')) {
-          try {
-            final parsed = json.decode(s);
-            if (parsed is List) {
-              imgs = parsed.map((e) => e.toString().trim()).toList();
-            }
-          } catch (_) {}
-        }
-        if (imgs.isEmpty) {
-          imgs = s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-        }
+      } else if (rawImgs is String) {
+        String s = rawImgs.trim();
+        // Handle CSV split for Supabase strings
+        imgs = s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
       }
     }
 
     final cleaned = imgs.map((url) {
       String link = url.trim().replaceAll("\\", "/");
 
-      // Handle localhost to emulator conversion
-      if (link.contains("localhost")) {
-        link = link.replaceAll("localhost", "10.0.2.2");
-      }
-
-      // If it's a Supabase/External link, leave it alone
+      // If it's a web URL (Supabase), leave as is
       if (link.toLowerCase().startsWith("http://") || link.toLowerCase().startsWith("https://")) {
-        return link;
+        return link.replaceAll("[", "").replaceAll("]", "").replaceAll("\"", "");
       }
 
-      // Otherwise, it's a local storage file
+      // Local path fix
+      link = link.replaceAll("[", "").replaceAll("]", "").replaceAll("\"", "");
       return "${ApiConfig.baseUrl}/hotel_images/$link";
     }).toList();
 
-    out['PG_Images'] = cleaned; // Store as a List for the UI to map over
+    out['pg_images'] = cleaned;
     return out;
   }
 
@@ -170,9 +155,9 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
     }
     final q = query.toLowerCase();
     final results = pgsList.where((pg) {
-      final name = (pg['PG_Name'] ?? pg['pg_name'] ?? '').toString().toLowerCase();
-      final city = (pg['City'] ?? pg['city'] ?? '').toString().toLowerCase();
-      final desc = (pg['Description'] ?? '').toString().toLowerCase();
+      final name = (pg['pg_name'] ?? '').toString().toLowerCase();
+      final city = (pg['city'] ?? '').toString().toLowerCase();
+      final desc = (pg['description'] ?? '').toString().toLowerCase();
       return name.contains(q) || city.contains(q) || desc.contains(q);
     }).toList();
 
@@ -214,10 +199,20 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
     });
   }
 
-  Future<void> _openMap(String? hotelLocation) async {
-    if (hotelLocation == null || hotelLocation.trim().isEmpty) return;
-    final url = Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(hotelLocation)}");
-    if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
+  Future<void> _openMap(String? locationData) async {
+    if (locationData == null || locationData.trim().isEmpty) return;
+
+    Uri url;
+    // Check if locationData contains latitude/longitude (from hotel_location column)
+    if (locationData.contains(',')) {
+      url = Uri.parse("https://www.google.com/maps/search/?api=1&query=$locationData");
+    } else {
+      url = Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(locationData)}");
+    }
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
   }
 
   Future<void> _onTapLocation() async {
@@ -295,7 +290,7 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
                 child: Row(
                   children: [
                     GestureDetector(
-                      onTap: () {}, // filter handler
+                      onTap: () {},
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
@@ -353,33 +348,34 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
                       itemCount: filteredPgs.length,
                       itemBuilder: (context, index) {
                         final pg = filteredPgs[index];
-
-                        // Accessing images as the normalized List
                         List<String> images = [];
-                        if (pg['PG_Images'] != null) {
-                          images = List<String>.from(pg['PG_Images']);
+                        if (pg['pg_images'] != null && pg['pg_images'] is List) {
+                          images = List<String>.from(pg['pg_images']);
                         }
+                        final pgName = (pg['pg_name'] ?? 'Unknown PG').toString();
+                        final city = (pg['city'] ?? '').toString();
+                        final state = (pg['state'] ?? '').toString();
+                        final country = (pg['country'] ?? '').toString();
+                        final pincode = (pg['pincode'] ?? '').toString();
 
-                        final pgName = (pg['PG_Name'] ?? pg['pg_name'] ?? 'Unknown PG').toString();
-                        final city = (pg['City'] ?? pg['city'] ?? '').toString();
-                        final state = (pg['State'] ?? pg['state'] ?? '').toString();
-                        final country = (pg['Country'] ?? pg['country'] ?? '').toString();
-                        final pincode = (pg['Pincode'] ?? pg['pincode'] ?? '').toString();
-                        final address = (pg['Address'] ?? pg['address'] ?? '').toString();
+                        // Combined Address String for display
+                        final addressText = (pg['address'] ?? '').toString();
+                        final fullDisplayAddress = "$addressText, $city, $state, $country - $pincode";
 
-                        final ratingRaw = (pg['Rating'] ?? pg['rating'] ?? '0').toString();
+                        // Raw coordinate data for map
+                        final hotelLocationCoords = (pg['hotel_location'] ?? '').toString();
+
+                        final ratingRaw = (pg['rating'] ?? '0').toString();
                         final ratingDouble = double.tryParse(ratingRaw) ?? 0;
                         final ratingInt = ratingDouble.floor();
-
-                        final roomPriceRaw = (pg['Room_Price'] ?? pg['room_price'] ?? '').toString();
+                        final roomPriceRaw = (pg['room_price'] ?? '').toString();
                         String roomPrice = '';
                         try {
                           final matches = RegExp(r'\d+').allMatches(roomPriceRaw);
                           final parsed = matches.map((m) => num.tryParse(m.group(0)!) ?? 0).where((v) => v > 0).toList();
                           if (parsed.isNotEmpty) roomPrice = parsed.reduce((a, b) => a < b ? a : b).toString();
                         } catch (_) {}
-
-                        final amenitiesRaw = (pg['Amenities'] ?? pg['amenities'] ?? '').toString();
+                        final amenitiesRaw = (pg['amenities'] ?? '').toString();
                         final amenities = amenitiesRaw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
                         bool isFavorite = false;
 
@@ -444,9 +440,7 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
                                         child: StatefulBuilder(
                                           builder: (context, setFavState) => GestureDetector(
                                             onTap: () {
-                                              setFavState(() {
-                                                isFavorite = !isFavorite;
-                                              });
+                                              setFavState(() { isFavorite = !isFavorite; });
                                             },
                                             child: Container(
                                               padding: const EdgeInsets.all(6),
@@ -479,13 +473,13 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
                                   ),
                                   const SizedBox(height: 4),
                                   GestureDetector(
-                                    onTap: () => _openMap(address),
+                                    onTap: () => _openMap(hotelLocationCoords),
                                     child: Row(
                                       children: [
                                         const Icon(Icons.location_on, size: 16, color: Colors.green),
                                         const SizedBox(width: 4),
                                         Expanded(
-                                          child: Text("$address, $city, $state, $country - $pincode",
+                                          child: Text(fullDisplayAddress,
                                               style: const TextStyle(fontSize: 12, color: Colors.black54),
                                               overflow: TextOverflow.ellipsis,
                                               maxLines: 2),

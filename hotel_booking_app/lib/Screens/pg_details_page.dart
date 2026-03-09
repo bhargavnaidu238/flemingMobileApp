@@ -27,22 +27,20 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
   @override
   void initState() {
     super.initState();
-    // Use normalized key access to ensure we get the images regardless of case
-    images = _parseImages(widget.pg['PG_Images'] ?? widget.pg['pg_images']);
+    // Synchronized with pg_page.dart key naming
+    images = _parseImages(widget.pg['pg_images']);
   }
 
   // -------------------- IMAGE PARSER --------------------
   List<String> _parseImages(dynamic raw) {
     if (raw == null) return [];
-
-    List<String> rawList = [];
-
     try {
+      List<String> rawList = [];
       if (raw is List) {
         rawList = raw.map((e) => e.toString().trim()).toList();
       } else if (raw is String) {
-        String s = raw.trim();
-        // Remove accidental brackets or quotes from JSON stringification
+        final s = raw.trim();
+        // Handle JSON array or CSV string
         if (s.startsWith('[') && s.endsWith(']')) {
           try {
             final parsed = json.decode(s);
@@ -51,43 +49,41 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
             }
           } catch (_) {}
         }
-
-        // If list is still empty, fallback to comma split
         if (rawList.isEmpty) {
           rawList = s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
         }
       }
+      return rawList.map(_normalizeImageUrl).toList();
     } catch (_) {
       return [];
     }
+  }
 
-    // Normalize each URL independently
-    return rawList.map((url) {
-      String link = url.replaceAll("\\", "/").trim();
+  String _normalizeImageUrl(String url) {
+    String link = url.trim().replaceAll("\\", "/");
+    // Strip accidental quotes or brackets
+    link = link.replaceAll("[", "").replaceAll("]", "").replaceAll("\"", "");
 
-      // Remove any leftover JSON artifacts
-      link = link.replaceAll('"', '').replaceAll('[', '').replaceAll(']', '');
+    if (link.toLowerCase().startsWith("http://") || link.toLowerCase().startsWith("https://")) {
+      return link;
+    }
 
-      // Handle localhost to emulator conversion
-      if (link.contains("localhost")) {
-        link = link.replaceAll("localhost", "10.0.2.2");
-      }
-
-      // If it's already a full Supabase or web URL, return it as is
-      if (link.toLowerCase().startsWith("http://") || link.toLowerCase().startsWith("https://")) {
-        return link;
-      }
-
-      // Otherwise, it's a local storage filename
-      final path = link.startsWith('/') ? link.substring(1) : link;
-      return '${ApiConfig.baseUrl}/hotel_images/$path';
-    }).toList();
+    final path = link.startsWith('/') ? link.substring(1) : link;
+    return '${ApiConfig.baseUrl}/hotel_images/$path';
   }
 
   // -------------------- MAP + CALL --------------------
-  Future<void> _openMap(String? location) async {
-    if (location == null || location.isEmpty) return;
-    final Uri url = Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(location)}");
+  Future<void> _openMap(String? locationData) async {
+    if (locationData == null || locationData.trim().isEmpty) return;
+
+    Uri url;
+    // If it contains a comma, it's likely Lat,Lng coordinates
+    if (locationData.contains(',')) {
+      url = Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(locationData)}");
+    } else {
+      url = Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(locationData)}");
+    }
+
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
@@ -96,32 +92,29 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
   Future<void> _callContact(String? contact) async {
     if (contact == null || contact.isEmpty) return;
     final Uri url = Uri(scheme: 'tel', path: contact);
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    }
+    if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
   // -------------------- ADDRESS BUILDER --------------------
   String _joinAddress() {
     final p = widget.pg;
-    final addr = (p['Address'] ?? p['address'] ?? '').toString().trim();
-    final city = (p['City'] ?? p['city'] ?? '').toString().trim();
-    final state = (p['State'] ?? p['state'] ?? '').toString().trim();
-    final country = (p['Country'] ?? p['country'] ?? '').toString().trim();
-    final pin = (p['Pincode'] ?? p['pincode'] ?? '').toString().trim();
+    final addr = (p['address'] ?? '').toString().trim();
+    final city = (p['city'] ?? '').toString().trim();
+    final state = (p['state'] ?? '').toString().trim();
+    final country = (p['country'] ?? '').toString().trim();
+    final pin = (p['pincode'] ?? '').toString().trim();
 
     final combined = [addr, city, state, country, pin].where((e) => e.isNotEmpty).join(', ');
-    if (combined.isNotEmpty) return combined;
-
-    return (p['Hotel_Location'] ?? p['PG_Location'] ?? '').toString().trim();
+    return combined.isNotEmpty ? combined : (p['hotel_location'] ?? '').toString();
   }
 
   String _getMapQuery() {
     final p = widget.pg;
-    final lat = (p['Latitude'] ?? p['latitude'] ?? '').toString().trim();
-    final lng = (p['Longitude'] ?? p['longitude'] ?? '').toString().trim();
-
-    if (lat.isNotEmpty && lng.isNotEmpty) return "$lat,$lng";
+    // Coordinate data from DB
+    final coords = (p['hotel_location'] ?? '').toString().trim();
+    if (coords.contains(',') && RegExp(r'[0-9]').hasMatch(coords)) {
+      return coords;
+    }
     return _joinAddress();
   }
 
@@ -136,33 +129,36 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
     final n = name.toLowerCase();
     if (n.contains('wifi')) return Icons.wifi;
     if (n.contains('ac') || n.contains('air')) return Icons.ac_unit;
-    if (n.contains('food') || n.contains('meal')) return Icons.restaurant;
+    if (n.contains('food') || n.contains('meal') || n.contains('mess')) return Icons.restaurant;
     if (n.contains('parking')) return Icons.local_parking;
     if (n.contains('security')) return Icons.security;
-    if (n.contains('laundry') || n.contains('wash')) return Icons.local_laundry_service;
+    if (n.contains('laundry')) return Icons.local_laundry_service;
     if (n.contains('tv')) return Icons.tv;
     return Icons.check_circle_outline;
   }
 
+  // -------------------- ROOM PRICE PARSER --------------------
   Map<String, String> _extractRoomPrices() {
-    final pg = widget.pg;
-    final raw = pg["Room_Prices"] ?? pg["Room_Price"] ?? pg["room_price"];
+    final raw = widget.pg["room_price"];
     if (raw == null) return {};
+    try {
+      List<String> parts = [];
+      if (raw is List) {
+        parts = raw.map((e) => e.toString().trim()).toList();
+      } else if (raw is String) {
+        parts = raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      }
 
-    List<String> parts = [];
-    if (raw is List) {
-      parts = raw.map((e) => e.toString().trim()).toList();
-    } else if (raw is String) {
-      parts = raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      return {
+        "Single Sharing Room": parts.length > 0 ? parts[0] : "N/A",
+        "Double Sharing Room": parts.length > 1 ? parts[1] : "N/A",
+        "Three Sharing Room": parts.length > 2 ? parts[2] : "N/A",
+        "Four Sharing Room": parts.length > 3 ? parts[3] : "N/A",
+        "Five Sharing Room": parts.length > 4 ? parts[4] : "N/A",
+      };
+    } catch (_) {
+      return {};
     }
-
-    return {
-      "Single Sharing": parts.length > 0 ? parts[0] : "N/A",
-      "Double Sharing": parts.length > 1 ? parts[1] : "N/A",
-      "Three Sharing": parts.length > 2 ? parts[2] : "N/A",
-      "Four Sharing": parts.length > 3 ? parts[3] : "N/A",
-      "Five Sharing": parts.length > 4 ? parts[4] : "N/A",
-    };
   }
 
   Widget _buildRatingStars(double rating) {
@@ -183,16 +179,14 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
   }
 
   Widget _buildPoliciesWidget(String policies) {
-    final items = policies.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-    if (items.isEmpty) return const Text("No policies provided.");
+    final trimmed = policies.trim();
+    if (trimmed.isEmpty) return const Text("No policies provided.");
+    final items = trimmed.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: items.map((p) => Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [const Text("• "), Expanded(child: Text(p))],
-        ),
+      children: items.map((p) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [const Text("• "), Expanded(child: Text(p))],
       )).toList(),
     );
   }
@@ -201,20 +195,22 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
   Widget build(BuildContext context) {
     final pg = widget.pg;
     final address = _joinAddress();
-    final pgName = pg['PG_Name'] ?? pg['pg_name'] ?? 'Unknown PG';
-    final contact = (pg['PG_Contact'] ?? pg['pg_contact'] ?? "N/A").toString();
-    final policies = (pg['Policies'] ?? pg['policies'] ?? "").toString();
+    final pgName = pg['pg_name'] ?? 'Unknown PG';
+    final pgType = (pg['pg_type'] ?? '').toString();
+    final contact = (pg['pg_contact'] ?? "N/A").toString();
+    final policies = (pg['policies'] ?? "").toString();
     final roomPrices = _extractRoomPrices();
-    final amenitiesList = _parseAmenities(pg['Amenities'] ?? pg['amenities']);
-    double rating = double.tryParse((pg['Rating'] ?? pg['rating'] ?? '0').toString()) ?? 0;
 
     final availableCounts = {
-      "Single Sharing": _toInt(pg['Total_Single_Sharing_Rooms'] ?? 0),
-      "Double Sharing": _toInt(pg['Total_Double_Sharing_Rooms'] ?? 0),
-      "Three Sharing": _toInt(pg['Total_Three_Sharing_Rooms'] ?? 0),
-      "Four Sharing": _toInt(pg['Total_Four_Sharing_Rooms'] ?? 0),
-      "Five Sharing": _toInt(pg['Total_Five_Sharing_Rooms'] ?? 0),
+      "Single Sharing Room": _toInt(pg['total_single_sharing_rooms'] ?? 0),
+      "Double Sharing Room": _toInt(pg['total_double_sharing_rooms'] ?? 0),
+      "Three Sharing Room": _toInt(pg['total_three_sharing_rooms'] ?? 0),
+      "Four Sharing Room": _toInt(pg['total_four_sharing_rooms'] ?? 0),
+      "Five Sharing Room": _toInt(pg['total_five_sharing_rooms'] ?? 0),
     };
+
+    final amenitiesList = _parseAmenities(pg['amenities']);
+    double rating = double.tryParse((pg['rating'] ?? '0').toString()) ?? 0;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7FFEA),
@@ -259,16 +255,26 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
                     _buildRatingStars(rating),
                   ],
                 ),
+                if (pgType.isNotEmpty) Text(pgType, style: TextStyle(color: Colors.grey[700])),
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    IconButton(icon: const Icon(Icons.location_on, color: Colors.green), onPressed: () => _openMap(_getMapQuery())),
+                    GestureDetector(
+                      onTap: () => _openMap(_getMapQuery()),
+                      child: const Icon(Icons.location_on, color: Colors.green, size: 26),
+                    ),
+                    const SizedBox(width: 6),
                     Expanded(child: Text(address, maxLines: 2, overflow: TextOverflow.ellipsis)),
                   ],
                 ),
+                const SizedBox(height: 10),
                 Row(
                   children: [
-                    IconButton(icon: const Icon(Icons.call, color: Colors.green), onPressed: () => _callContact(contact)),
+                    GestureDetector(
+                      onTap: () => _callContact(contact),
+                      child: const Icon(Icons.call, color: Colors.green, size: 26),
+                    ),
+                    const SizedBox(width: 6),
                     Expanded(child: Text(contact)),
                   ],
                 ),
@@ -276,31 +282,35 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
                 const Text("Rooms", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 const SizedBox(height: 10),
                 SizedBox(
-                  height: 130,
+                  height: 140,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     children: roomPrices.keys.map((roomType) {
-                      final price = roomPrices[roomType]!;
+                      final price = roomPrices[roomType] ?? "N/A";
                       final available = availableCounts[roomType] ?? 0;
                       return GestureDetector(
                         onTap: available > 0 ? () => setState(() { selectedRoomType = roomType; selectedRoomPrice = price; }) : null,
                         child: Container(
-                          width: 160,
+                          width: 180,
                           margin: const EdgeInsets.only(right: 12),
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: selectedRoomType == roomType ? Colors.green.shade100 : Colors.white,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: selectedRoomType == roomType ? Colors.green : Colors.transparent),
-                            boxShadow: [BoxShadow(blurRadius: 4, color: Colors.black.withOpacity(0.05))],
+                            boxShadow: [BoxShadow(blurRadius: 6, offset: const Offset(0, 3), color: Colors.black.withOpacity(0.06))],
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(roomType, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              Row(children: [
+                                const Icon(Icons.bed, color: Colors.green),
+                                const SizedBox(width: 6),
+                                Expanded(child: Text(roomType, style: const TextStyle(fontWeight: FontWeight.bold))),
+                              ]),
                               const Spacer(),
-                              Text("₹$price", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade800, fontSize: 16)),
-                              Text("$available left", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                              Text("Rs/$price", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade800)),
+                              const SizedBox(height: 6),
+                              Text("$available available", style: const TextStyle(fontSize: 12, color: Colors.black54)),
                             ],
                           ),
                         ),
@@ -310,23 +320,24 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
                 ),
                 const SizedBox(height: 20),
                 const Text("Amenities", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Wrap(
-                  spacing: 20,
-                  runSpacing: 15,
+                  spacing: 12,
+                  runSpacing: 12,
                   children: amenitiesList.map((a) => Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      CircleAvatar(backgroundColor: Colors.green.shade50, child: Icon(_getAmenityIcon(a), color: Colors.green)),
+                      CircleAvatar(radius: 20, backgroundColor: Colors.green.shade50, child: Icon(_getAmenityIcon(a), color: Colors.green, size: 20)),
                       const SizedBox(height: 4),
-                      Text(a, style: const TextStyle(fontSize: 11)),
+                      SizedBox(width: 60, child: Text(a, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12))),
                     ],
                   )).toList(),
                 ),
                 const SizedBox(height: 20),
                 const Text("About PG", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 const SizedBox(height: 6),
-                Text(pg["About_This_PG"] ?? pg["Description"] ?? "No description available."),
-                const SizedBox(height: 20),
+                Text(pg["about_this_pg"] ?? pg["description"] ?? "No description available."),
+                const SizedBox(height: 16),
                 const Text("Policies", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 const SizedBox(height: 6),
                 _buildPoliciesWidget(policies),
@@ -339,29 +350,27 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
               bottom: 0,
               child: Container(
                 width: MediaQuery.of(context).size.width,
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(blurRadius: 4, color: Colors.black12)]),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(blurRadius: 6, color: Colors.black26)]),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(selectedRoomType, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        Text("₹$selectedRoomPrice", style: TextStyle(color: Colors.green.shade800, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(selectedRoomType, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text("Rs/$selectedRoomPrice", style: TextStyle(color: Colors.green.shade800)),
+                    ]),
                     ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12)),
                       onPressed: () {
                         final data = Map<String, dynamic>.from(pg);
-                        data["Selected_Room_Type"] = selectedRoomType;
-                        data["Selected_Room_Price"] = selectedRoomPrice;
-                        data["PG_Images"] = images;
-                        Navigator.pushNamed(context, "/booking", arguments: {"pg": data, "user": widget.user, "userId": widget.user["userId"]});
+                        data["address"] = address;
+                        data["hotel_location"] = widget.pg['hotel_location'] ?? address;
+                        data["selected_room_type"] = selectedRoomType;
+                        data["selected_room_price"] = selectedRoomPrice;
+                        data["pg_images"] = images;
+                        Navigator.pushNamed(context, "/booking", arguments: {"pg": data, "user": widget.user, "userId": widget.user["userId"] ?? ""});
                       },
-                      child: const Text("Book Now", style: TextStyle(color: Colors.white, fontSize: 16)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      child: const Text("Book Now", style: TextStyle(fontSize: 16, color: Colors.white)),
                     )
                   ],
                 ),

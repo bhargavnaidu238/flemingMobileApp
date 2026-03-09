@@ -123,12 +123,6 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  @override
-  void dispose() {
-    _bannerController.dispose();
-    super.dispose();
-  }
-
   void _onNavTap(int index) {
     setState(() => _selectedIndex = index);
     Future.microtask(() {
@@ -246,6 +240,15 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+// Inside your State class:
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Widget _buildSearchBar() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -261,21 +264,32 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       child: TextField(
+        controller: _searchController, // Attached controller
         decoration: const InputDecoration(
-          hintText: "Search category (Hotel, Resort, etc)...",
+          hintText: "Search category (Hotel, Resort) or Name...",
           prefixIcon: Icon(Icons.search),
           border: InputBorder.none,
           contentPadding: EdgeInsets.all(14),
         ),
         textInputAction: TextInputAction.search,
         onSubmitted: (query) {
-          if (query.trim().isEmpty) return;
+          String trimmedQuery = query.trim();
+          if (trimmedQuery.isEmpty) return;
+
+          // 1. Clear the search bar immediately
+          _searchController.clear();
 
           final normalizedUser = _normalizeUser(widget.user);
+
+          // 2. Pass the raw query as 'query'.
+          // We let the Java backend decide if it's a category or a name.
           Navigator.pushNamed(
             context,
             '/hotels',
-            arguments: {'user': normalizedUser, 'type': query.trim()},
+            arguments: {
+              'user': normalizedUser,
+              'query': trimmedQuery,
+            },
           );
         },
       ),

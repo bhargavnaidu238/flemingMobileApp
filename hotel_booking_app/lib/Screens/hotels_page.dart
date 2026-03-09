@@ -6,6 +6,9 @@ import 'hotels_details_page.dart';
 import 'hotel_ai_helper.dart';
 import 'app_filters.dart' as app_filters;
 import 'package:hotel_booking_app/services/api_service.dart';
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class HotelsPage extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -28,6 +31,7 @@ class _HotelsPageState extends State<HotelsPage>
   int _selectedIndex = 0;
 
   String deviceLocationDisplay = 'Detecting location...';
+  bool isManualInput = false;
   Map<String, dynamic> currentFilters = {};
   Timer? _debounce;
 
@@ -49,27 +53,74 @@ class _HotelsPageState extends State<HotelsPage>
 
   Future<void> _initDeviceLocation() async {
     try {
-      final name = await app_filters.getCurrentLocationDisplayName();
-      if (!mounted) return;
-      if (name != null && name.toString().trim().isNotEmpty) {
-        final previous = deviceLocationDisplay;
-        setState(() => deviceLocationDisplay = name.toString());
+      // 1. Check Permissions & Services
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _updateLocationState('Location services disabled');
+        return;
+      }
 
-        if ((previous == 'Detecting location...' ||
-            previous == 'Tap to select location' ||
-            previous == 'Manual Location' ||
-            previous == 'Permission Permanently Denied') &&
-            deviceLocationDisplay.trim().isNotEmpty &&
-            deviceLocationDisplay != 'Manual Location' &&
-            deviceLocationDisplay != 'Permission Permanently Denied') {
-          await fetchHotelData(city: deviceLocationDisplay);
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _updateLocationState('Permission denied');
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _updateLocationState('Permission permanently denied');
+        return;
+      }
+
+      // 2. Fetch High Accuracy Position
+      // Using high accuracy ensures the 'exact' location rather than a tower-based guess
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      // 3. Reverse Geocode (Coordinates -> City/Address)
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks[0];
+        // You can use place.subLocality, place.locality, or place.administrativeArea
+        String cityName = place.locality ?? place.subAdministrativeArea ?? 'Unknown Location';
+
+        // 4. Update UI only if the user hasn't overridden it manually
+        if (!isManualInput) {
+          setState(() {
+            deviceLocationDisplay = cityName;
+          });
+          // Trigger data fetch
+          await fetchHotelData(city: cityName);
         }
       } else {
-        setState(() => deviceLocationDisplay = 'Tap to select location');
+        _updateLocationState('Tap to select location');
       }
-    } catch (_) {
-      if (mounted) setState(() => deviceLocationDisplay = 'Tap to select location');
+
+    } catch (e) {
+      debugPrint("Location Error: $e");
+      _updateLocationState('Tap to select location');
     }
+  }
+
+  void _updateLocationState(String message) {
+    if (mounted) {
+      setState(() => deviceLocationDisplay = message);
+    }
+  }
+
+// Call this when the user types in a location manually
+  void onManualLocationInput(String input) {
+    isManualInput = true;
+    setState(() => deviceLocationDisplay = input);
+    fetchHotelData(city: input);
   }
 
   @override
