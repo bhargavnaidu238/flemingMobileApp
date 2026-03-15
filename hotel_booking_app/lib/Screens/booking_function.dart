@@ -65,20 +65,22 @@ class _BookingPageState extends State<BookingPage> {
     return false;
   }
 
+  // FIXED: Logic to parse CSV strings "Standard,Suite" and "1000,5000" correctly
   Map<String, dynamic> get availableRoomsMap {
     if (hotel['Available_Rooms_Map'] != null && hotel['Available_Rooms_Map'] is Map) {
       return Map<String, dynamic>.from(hotel['Available_Rooms_Map']);
     }
-    final rawData = hotel['room_price'] ?? hotel['room_prices'] ?? hotel['room_price'];
-    if (rawData is Map) return Map<String, dynamic>.from(rawData);
-    if (rawData is String && rawData.isNotEmpty) {
+    final rawPrices = hotel['Room_Price'] ?? hotel['room_price'] ?? '';
+    final rawTypes = hotel['Room_Type'] ?? hotel['room_type'] ?? '';
+
+    if (rawPrices is String && rawPrices.isNotEmpty && rawTypes is String && rawTypes.isNotEmpty) {
       Map<String, dynamic> parsed = {};
       try {
-        final parts = rawData.split(',');
-        for (var part in parts) {
-          final kv = part.split(':');
-          if (kv.length >= 2) {
-            parsed[kv[0].trim()] = kv[1].trim();
+        final prices = rawPrices.split(',');
+        final types = rawTypes.split(',');
+        for (int i = 0; i < types.length; i++) {
+          if (i < prices.length) {
+            parsed[types[i].trim()] = prices[i].trim();
           }
         }
         return parsed;
@@ -143,22 +145,22 @@ class _BookingPageState extends State<BookingPage> {
     super.dispose();
   }
 
-  String get hotelName => (hotel['hotel_name'] ?? hotel['hotelname'] ?? hotel['name'] ?? hotel['pg_name'] ?? '').toString();
+  String get hotelName => (hotel['hotel_name'] ?? hotel['Hotel_Name'] ?? hotel['pg_name'] ?? '').toString();
   String get hotelAddress {
-    final address = hotel['address'] ?? hotel['hotel_address'] ?? hotel['hotel_location'] ?? hotel['pg_location'] ?? '';
-    final city = hotel['city'] ?? '';
-    final state = hotel['state'] ?? '';
-    final country = hotel['country'] ?? '';
-    final pincode = hotel['pincode'] ?? '';
+    final address = hotel['address'] ?? hotel['hotel_address'] ?? hotel['Hotel_Address'] ?? '';
+    final city = hotel['city'] ?? hotel['City'] ?? '';
+    final state = hotel['state'] ?? hotel['State'] ?? '';
+    final country = hotel['country'] ?? hotel['Country'] ?? '';
+    final pincode = hotel['pincode'] ?? hotel['Pincode'] ?? '';
     final parts = [address, city, state, country, pincode].where((e) => e != null && e.toString().trim().isNotEmpty).map((e) => e.toString().trim()).toList();
     return parts.isEmpty ? '' : parts.join(', ');
   }
-  String get hotelContact => (hotel['hotel_contact'] ?? hotel['contact'] ?? hotel['phone'] ?? hotel['pg_contact'] ?? '').toString();
-  String get hotelAmenities => (hotel['amenities'] ?? hotel['hotel_amenities'] ?? '').toString();
-  String get hotelRating => (hotel['rating'] ?? '').toString();
+  String get hotelContact => (hotel['hotel_contact'] ?? hotel['Hotel_Contact'] ?? '').toString();
+  String get hotelAmenities => (hotel['amenities'] ?? hotel['Amenities'] ?? '').toString();
+  String get hotelRating => (hotel['rating'] ?? hotel['Rating'] ?? '').toString();
 
   bool get customizationAllowed {
-    final v = hotel['customization'] ?? hotel['customization_allowed'] ?? hotel['customization'] ?? hotel['customization_allowed'];
+    final v = hotel['customization'] ?? hotel['customization_allowed'];
     if (v == null) return false;
     if (v is bool) return v;
     final s = v.toString().toLowerCase().trim();
@@ -171,13 +173,17 @@ class _BookingPageState extends State<BookingPage> {
     return diff >= 0 ? diff : 0;
   }
 
+  // FIXED: Priorities the explicitly passed Selected Room Price
   double get roomPricePerDay {
-    final rp = hotel['selected_room_price'] ?? hotel['room_price'] ?? hotel['room_price'] ?? hotel['roomprice'] ?? hotel['price'] ?? '';
-    final s = rp?.toString() ?? '';
+    final selectedPrice = hotel['Selected_Room_Price'];
+    if (selectedPrice != null) {
+      return double.tryParse(selectedPrice.toString().replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
+    }
+    final rp = hotel['room_price'] ?? hotel['Room_Price'] ?? '';
+    final s = rp.toString();
     if (s.isEmpty) return 0.0;
     final first = s.split(',').first.trim();
-    final cleaned = first.split(':').last.replaceAll(RegExp(r'[^0-9.]'), '');
-    return double.tryParse(cleaned) ?? 0.0;
+    return double.tryParse(first.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
   }
 
   double get totalRoomPricePerDay {
@@ -197,7 +203,7 @@ class _BookingPageState extends State<BookingPage> {
   double get allDayPrice => totalRoomPricePerDay * (daysOfStay > 0 ? daysOfStay : 1);
 
   double get pgMonthlyPrice {
-    final selPrice = hotel['selected_room_price'] ?? hotel['selected_room_price'];
+    final selPrice = hotel['Selected_Room_Price'] ?? hotel['selected_room_price'];
     if (selPrice != null) return double.tryParse(selPrice.toString().replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
     if (availableRoomsMap.isEmpty) return 0.0;
     final key = (hotel['Selected_Room_Type'] ?? selectedRoomType ?? '').toString();
@@ -417,8 +423,8 @@ class _BookingPageState extends State<BookingPage> {
     final name = nameController.text.trim();
     final email = emailController.text.trim();
     final phone = phoneController.text.trim();
-    final partnerId = hotel['partner_id'] ?? hotel['partner_id'] ?? '';
-    final hotelId = hotel['hotel_id'] ?? hotel['hotel_id'] ?? hotel['PG_ID'] ?? hotel['pg_id'] ?? '';
+    final partnerId = hotel['partner_id'] ?? hotel['Partner_Id'] ?? '';
+    final hotelId = hotel['hotel_id'] ?? hotel['Hotel_Id'] ?? hotel['PG_ID'] ?? '';
     String extraRoomsStr = selectedExtraRooms.entries.where((e) => e.value).map((e) => e.key).join(", ");
 
     String mainRoom = (hotel['Selected_Room_Type'] ?? "").toString();
@@ -440,7 +446,7 @@ class _BookingPageState extends State<BookingPage> {
       "payment_type": "Online",
       "paid_via": "Wallet/Online",
       "payment_status": "Pending",
-      "booking_status": "PENDING", // FIX: Initialized status to match SQL CHECK constraint
+      "booking_status": "PENDING",
       "hotel_address": hotelAddress,
       "hotel_contact": hotelContact,
       "total_price": totalAmount.toStringAsFixed(2),
@@ -453,12 +459,12 @@ class _BookingPageState extends State<BookingPage> {
       "coupon_discount_amount": "0.0",
       "coupon_code": "",
       "gst": gst.toStringAsFixed(2),
-      "last_payment_record_id": "", // Placeholder to be updated after transaction creation
+      "last_payment_record_id": "",
     };
 
     if (!isPgMode) {
       bookingData.addAll({
-        "hotel_type": hotel['hotel_type'] ?? "Hotel",
+        "hotel_type": hotel['hotel_type'] ?? hotel['Hotel_Type'] ?? "Hotel",
         "check_in_date": "${checkInDate!.day}-${checkInDate!.month}-${checkInDate!.year}",
         "check_out_date": "${checkOutDate!.day}-${checkOutDate!.month}-${checkOutDate!.year}",
         "guest_count": (adults + children).toString(),
@@ -473,7 +479,7 @@ class _BookingPageState extends State<BookingPage> {
     } else {
       bookingData.addAll({
         "Selected_Room_Type": mainRoom,
-        "selected_room_price": (hotel['selected_room_price'] ?? "0").toString(),
+        "selected_room_price": (hotel['Selected_Room_Price'] ?? "0").toString(),
         "room_price_per_month": pgMonthlyPrice.toStringAsFixed(2),
         "all_months_price": pgTotalForMonths.toStringAsFixed(2),
         "monthly_price": pgMonthlyPrice.toStringAsFixed(2),
@@ -554,6 +560,7 @@ class _BookingPageState extends State<BookingPage> {
   }
 }
 
+// CustomizationPage remains unchanged
 class CustomizationPage extends StatefulWidget {
   final Map hotel;
   final Map<String, dynamic> initialSelection;

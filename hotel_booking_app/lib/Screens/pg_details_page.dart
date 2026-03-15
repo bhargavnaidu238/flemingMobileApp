@@ -27,7 +27,6 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
   @override
   void initState() {
     super.initState();
-    // Synchronized with pg_page.dart key naming
     images = _parseImages(widget.pg['pg_images']);
   }
 
@@ -40,7 +39,6 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
         rawList = raw.map((e) => e.toString().trim()).toList();
       } else if (raw is String) {
         final s = raw.trim();
-        // Handle JSON array or CSV string
         if (s.startsWith('[') && s.endsWith(']')) {
           try {
             final parsed = json.decode(s);
@@ -61,7 +59,6 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
 
   String _normalizeImageUrl(String url) {
     String link = url.trim().replaceAll("\\", "/");
-    // Strip accidental quotes or brackets
     link = link.replaceAll("[", "").replaceAll("]", "").replaceAll("\"", "");
 
     if (link.toLowerCase().startsWith("http://") || link.toLowerCase().startsWith("https://")) {
@@ -69,7 +66,7 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
     }
 
     final path = link.startsWith('/') ? link.substring(1) : link;
-    return '${ApiConfig.baseUrl}/hotel_images/$path';
+    return '${ApiConfig.baseUrl}/pg_images/$path';
   }
 
   // -------------------- MAP + CALL --------------------
@@ -77,7 +74,6 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
     if (locationData == null || locationData.trim().isEmpty) return;
 
     Uri url;
-    // If it contains a comma, it's likely Lat,Lng coordinates
     if (locationData.contains(',')) {
       url = Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(locationData)}");
     } else {
@@ -110,7 +106,6 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
 
   String _getMapQuery() {
     final p = widget.pg;
-    // Coordinate data from DB
     final coords = (p['hotel_location'] ?? '').toString().trim();
     if (coords.contains(',') && RegExp(r'[0-9]').hasMatch(coords)) {
       return coords;
