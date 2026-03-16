@@ -37,8 +37,6 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
     });
 
     try {
-      // We fetch all data to ensure we can manually categorize 'ongoing' bookings
-      // into the 'Upcoming' section to avoid them disappearing.
       final uri = Uri.parse(
         '${ApiConfig.baseUrl}/booking-history'
             '?email=${Uri.encodeComponent(widget.email.trim())}'
@@ -62,14 +60,17 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
               e.containsKey('check_out_date');
           if (!hasKeys) return false;
 
-          // Parse check-out date to determine if it's actually "Past"
+          final status = (e['booking_status'] ?? '').toString().toLowerCase();
+
           try {
-            final checkOutStr = e['check_out_date'].toString();
+            // Fix: Parse check-out date correctly by splitting time if present
+            final checkOutStr = e['check_out_date'].toString().split(" ").first;
             final checkOutDate = DateTime.parse(checkOutStr);
             final checkOutOnlyDate = DateTime(checkOutDate.year, checkOutDate.month, checkOutDate.day);
 
             if (showUpcoming) {
-              // Show if check-out is today or in the future (includes ongoing)
+              // Condition: Show if check-out is today or future
+              // This keeps Checked_In and Completed bookings visible in "Upcoming" until they are actually past.
               return checkOutOnlyDate.isAtSameMomentAs(today) || checkOutOnlyDate.isAfter(today);
             } else {
               // Show only if check-out was before today
