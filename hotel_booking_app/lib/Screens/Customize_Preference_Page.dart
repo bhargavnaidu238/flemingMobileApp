@@ -284,7 +284,6 @@ class _CustomizePreferencesPageState extends State<CustomizePreferencesPage> {
   Future<void> _savePreferences() async {
     setState(() => isSaving = true);
 
-    // Save null if nothing is selected
     final addOnsString = addOns.isNotEmpty ? addOns.join(", ") : null;
     final stayPreferenceString = stayPreference.isNotEmpty ? stayPreference
         .join(", ") : null;
@@ -298,7 +297,6 @@ class _CustomizePreferencesPageState extends State<CustomizePreferencesPage> {
       "email": widget.email,
       "userId": widget.userId,
       "Room_Type": roomType != "Single" ? roomType : null,
-      // null if user didn't change from default
       "Meal_Preference": mealPreference != "Veg" ? mealPreference : null,
       "Add_ons": addOnsString,
       "Budget_Min": budgetRange.start != 500 ? budgetRange.start.toInt() : null,
@@ -307,7 +305,6 @@ class _CustomizePreferencesPageState extends State<CustomizePreferencesPage> {
       "Stay_Preference": stayPreferenceString,
       "For_You": forYouText,
       "Location_Preference": null
-      // optional placeholder
     };
 
     try {
@@ -320,7 +317,7 @@ class _CustomizePreferencesPageState extends State<CustomizePreferencesPage> {
       if (response.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("✅ Preferences saved successfully!"),
+            content: Text("Preferences saved successfully!"),
             backgroundColor: Colors.green,
           ),
         );
@@ -328,7 +325,7 @@ class _CustomizePreferencesPageState extends State<CustomizePreferencesPage> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("⚠️ Failed: ${response.body}"),
+            content: Text("Failed: ${response.body}"),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -336,7 +333,7 @@ class _CustomizePreferencesPageState extends State<CustomizePreferencesPage> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("❌ Error: $e"),
+          content: Text("Error: $e"),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -361,7 +358,6 @@ class CustomizationPage extends StatefulWidget {
 class _CustomizationPageState extends State<CustomizationPage> {
   String stayType = "Family"; // Family, Business, Vacation, Type4
 
-  // Type1 options A,B,C,D with prices
   final List<Map<String, dynamic>> type1Options = [
     {"label": "A", "price": 100.0},
     {"label": "B", "price": 200.0},
@@ -370,14 +366,12 @@ class _CustomizationPageState extends State<CustomizationPage> {
   ];
   Map<String, bool> type1Selected = {};
 
-  // Add-ons depending on hotel type
   List<Map<String, dynamic>> addons = [];
   Map<String, bool> addonsSelected = {};
 
   @override
   void initState() {
     super.initState();
-    // load previous selection
     stayType = widget.initialSelection['stayType'] ?? "Family";
 
     final List initialType1 = (widget.initialSelection['type1'] ?? []);

@@ -4,13 +4,11 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:hotel_booking_app/services/api_service.dart';
 
-
-// LOCATION HANDLING (with reverse geocoding)
 Future<String> getCurrentLocationDisplayName() async {
   try {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      // Try to get last known position as fallback (emulator friendly)
+      //Get last known position as fallback
       Position? last = await Geolocator.getLastKnownPosition();
       if (last == null) return "Manual Location";
       return await _reverseGeocodeToCity(last.latitude, last.longitude) ??
@@ -83,7 +81,7 @@ Future<List<dynamic>> remoteSearchHotels(
       String? city,
       Map<String, dynamic>? filters,
     }) async {
-  // We treat the search query as a filter for the Database
+  // Search query as a filter for the Database
   Map<String, dynamic> dbFilters = Map<String, dynamic>.from(filters ?? {});
   dbFilters["searchQuery"] = query;
   if (city != null) dbFilters["city"] = city;
@@ -93,7 +91,6 @@ Future<List<dynamic>> remoteSearchHotels(
 }
 
 // ========================= LOCATION SELECTOR ===========================
-
 Future<String?> openLocationSelector(BuildContext context) async {
   TextEditingController controller = TextEditingController();
   return await showDialog<String>(

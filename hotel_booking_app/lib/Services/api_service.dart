@@ -35,35 +35,28 @@ class ApiService {
   static const String _emailKey = "auth_email";
   static const String _userIdKey = "auth_userId";
 
-  // Static cache to allow synchronous access for Routing and UI
   static String? _cachedToken;
   static String? _cachedEmail;
   static String? _cachedUserId;
 
-  /// Call this in main() before runApp() to load stored details
   static Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _cachedToken = prefs.getString(_tokenKey);
     _cachedEmail = prefs.getString(_emailKey);
     _cachedUserId = prefs.getString(_userIdKey);
-
-    // Debug check to confirm if the user is seen as logged in on app start
     debugPrint("ApiService: Data loaded. LoggedIn: ${isLoggedIn()}");
   }
 
-  /// ================= AUTH STORAGE =================
   static Future<void> saveAuthData({
     required String token,
     required String email,
     required String userId,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    // Use commit: true to ensure data is written immediately before moving to the next screen
     await prefs.setString(_tokenKey, token);
     await prefs.setString(_emailKey, email);
     await prefs.setString(_userIdKey, userId);
 
-    // Update memory cache
     _cachedToken = token;
     _cachedEmail = email;
     _cachedUserId = userId;
@@ -73,25 +66,77 @@ class ApiService {
   static String? getEmail() => _cachedEmail;
   static String? getUserId() => _cachedUserId;
 
-  // Optimized check: Ensures we have a non-empty token
   static bool isLoggedIn() => _cachedToken != null && _cachedToken!.isNotEmpty;
 
-  /// FIX: Clears all local storage and memory cache to prevent "Back Button" access
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
-
-    // 1. Clear physical storage
     await prefs.remove(_tokenKey);
     await prefs.remove(_emailKey);
     await prefs.remove(_userIdKey);
-    // Alternatively: await prefs.clear(); if you want to wipe everything
-
-    // 2. Wipe memory cache immediately
     _cachedToken = null;
     _cachedEmail = null;
     _cachedUserId = null;
-
     debugPrint("ApiService: User logged out and cache cleared.");
+  }
+
+  /// ================= EMAIL OTP =================
+
+  static Future<bool> sendEmailOtp(String email) async {
+    final url = Uri.parse('${ApiConfig.baseUrl}/send-email-otp');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": email.trim(),
+          "type": "send_otp"
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint("Send OTP Error: $e");
+      return false;
+    }
+  }
+
+  static Future<bool> verifyEmailOtp({
+    required String email,
+    required String otp,
+  }) async {
+    final url = Uri.parse('${ApiConfig.baseUrl}/verify-email-otp');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": email.trim(),
+          "otp": otp.trim(),
+          "type": "verify_otp"
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint("Verify OTP Error: $e");
+      return false;
+    }
+  }
+
+  static Future<int> sendEmailOtpStatus(String email) async {
+    final url = Uri.parse('${ApiConfig.baseUrl}/send-email-otp');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": email.trim(),
+          "type": "send_otp"
+        }),
+      );
+      return response.statusCode;
+    } catch (e) {
+      debugPrint("Send OTP Error: $e");
+      return 500;
+    }
   }
 
   /// ================= REGISTER =================
@@ -125,7 +170,7 @@ class ApiService {
       );
       return response.statusCode == 200;
     } catch (e) {
-      debugPrint('❌ Register Error: $e');
+      debugPrint('Register Error: $e');
       return false;
     }
   }
@@ -151,11 +196,9 @@ class ApiService {
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
-        // Fallback to a timestamp-based token if the server doesn't provide one
         final token = data['token'] ?? DateTime.now().millisecondsSinceEpoch.toString();
         final userId = data['userId']?.toString() ?? '';
 
-        // PERSISTENCE FIX: Save data to SharedPreferences so it persists after app close
         await saveAuthData(
           token: token,
           email: email,
@@ -171,7 +214,7 @@ class ApiService {
       }
       return {"error": data['error'] ?? "login_failed"};
     } catch (e) {
-      debugPrint('🚨 Login Error: $e');
+      debugPrint('Login Error: $e');
       return {"error": "connection_error"};
     }
   }
@@ -197,7 +240,7 @@ class ApiService {
         return {"matched": data['matched'] == true};
       }
     } catch (e) {
-      debugPrint('❌ Verify Forgot Password Error: $e');
+      debugPrint('Verify Forgot Password Error: $e');
     }
     return {"matched": false};
   }
@@ -218,7 +261,7 @@ class ApiService {
       );
       return {"success": response.statusCode == 200};
     } catch (e) {
-      debugPrint('❌ Change Password Error: $e');
+      debugPrint('Change Password Error: $e');
       return {"success": false};
     }
   }
@@ -244,7 +287,7 @@ class ApiService {
         return data['success'] == true;
       }
     } catch (e) {
-      debugPrint('❌ Change Password (Profile) Error: $e');
+      debugPrint('Change Password (Profile) Error: $e');
     }
     return false;
   }
@@ -280,7 +323,7 @@ class ProfileApiService {
         };
       }
     } catch (e) {
-      debugPrint('🚨 FetchProfile Error: $e');
+      debugPrint('FetchProfile Error: $e');
     }
     return null;
   }
@@ -309,7 +352,7 @@ class ProfileApiService {
       );
       return response.statusCode == 200;
     } catch (e) {
-      debugPrint('🚨 UpdateProfile Error: $e');
+      debugPrint('UpdateProfile Error: $e');
       return false;
     }
   }
@@ -332,7 +375,7 @@ class ProfileApiService {
       );
       return response.statusCode == 200;
     } catch (e) {
-      debugPrint('❌ Deactivate Error: $e');
+      debugPrint('Deactivate Error: $e');
       return false;
     }
   }

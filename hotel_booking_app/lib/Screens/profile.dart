@@ -28,7 +28,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> fetchProfile() async {
     if (widget.email.isEmpty) {
-      debugPrint('❌ ProfilePage: Email is empty.');
+      debugPrint('ProfilePage: Email is empty.');
       setState(() => isFetching = false);
       return;
     }
@@ -44,9 +44,9 @@ class _ProfilePageState extends State<ProfilePage> {
         "address": "",
       };
 
-      debugPrint("📌 Loaded Profile UserID: ${widget.userId}");
+      debugPrint("Loaded Profile UserID: ${widget.userId}");
     } catch (e) {
-      debugPrint("❌ Error fetching profile: $e");
+      debugPrint("Error fetching profile: $e");
     }
 
     if (mounted) setState(() => isFetching = false);
@@ -254,10 +254,7 @@ class _ProfilePageState extends State<ProfilePage> {
       );
 }
 
-/* -------------------------------------------------------------------------
-         ⭐ UPDATED PROFILE DETAILS PAGE WITH COUNTRY CODE FEATURE ⭐
---------------------------------------------------------------------------- */
-
+// ============= PROFILE DETAILS PAGE ====================
 class ProfileDetailsPage extends StatefulWidget {
   final String email;
   final String userId;
@@ -327,7 +324,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
     }
   }
 
-  /* ================= UPDATE PROFILE ================= */
+  /* ================= UPDATE PROFILE SECTION ================= */
 
   Future<void> updateProfile() async {
     final mobile = phoneController.text.trim();
@@ -448,8 +445,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
     );
   }
 
-  /* ================= DELETE ACCOUNT ================= */
-
+  /* ================= DELETE ACCOUNT SECTION================= */
   void confirmDelete() {
     showDialog(
       context: context,
@@ -539,7 +535,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
               ),
             ),
 
-            /// 💾 SAVE CHANGES (ONLY IN EDIT MODE)
+            /// SAVE CHANGES (ONLY IN EDIT MODE)
             if (isEditing)
               ElevatedButton(
                 onPressed: isLoading ? null : updateProfile,
@@ -557,7 +553,7 @@ class _ProfileDetailsPageState extends State<ProfileDetailsPage> {
                     : const Text("Save Changes"),
               ),
 
-            /// 🔐 CHANGE PASSWORD (HIDDEN DURING EDIT)
+            ///CHANGE PASSWORD (HIDDEN DURING EDIT)
             if (!isEditing) ...[
               ElevatedButton(
                 onPressed: openChangePasswordDialog,

@@ -110,10 +110,7 @@ class CouponUi {
   });
 }
 
-/// ----------------------
-/// MAIN SCREEN
-/// ----------------------
-
+///=============== REWARD PAGE SECTION
 class _RewardsWalletPageState extends State<RewardsWalletPage> {
 
   bool _isLoading = true;
@@ -134,7 +131,6 @@ class _RewardsWalletPageState extends State<RewardsWalletPage> {
   }
 
   String _generateFallbackReferralCode(String userId) {
-    // Same idea as backend: stable hash-like code
     final base = "$userId|REFERRAL_SALT";
     final hash = base.hashCode.abs();
     final base36 = hash.toRadixString(36).toUpperCase();
@@ -150,12 +146,7 @@ class _RewardsWalletPageState extends State<RewardsWalletPage> {
       final uri = Uri.parse(
           "${ApiConfig.baseUrl}/wallet?userId=${Uri.encodeComponent(widget.userId)}");
 
-      debugPrint("📡 GET -> $uri");
-
       final response = await http.get(uri);
-
-      debugPrint("📩 Status: ${response.statusCode}");
-      debugPrint("📩 Body: ${response.body}");
 
       if (response.statusCode != 200) {
         throw Exception("Failed to load wallet data: ${response.statusCode}");
@@ -268,7 +259,7 @@ class _RewardsWalletPageState extends State<RewardsWalletPage> {
         );
       }).toList();
     } catch (e) {
-      debugPrint("❌ Error loading wallet: $e");
+      debugPrint("Error loading wallet: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Failed to load wallet data: $e")),

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-// Note: Ensure your local path to api_service is correct
 import 'package:hotel_booking_app/services/api_service.dart';
 
 class HotelDetailsPage extends StatefulWidget {
@@ -25,7 +24,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
   @override
   void initState() {
     super.initState();
-    // Support both 'hotel_images' and 'Hotel_Images' keys from DB/API
     images = _parseImages(widget.hotel['Hotel_Images'] ?? widget.hotel['hotel_images']);
   }
 
@@ -69,7 +67,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
     return '${ApiConfig.baseUrl}/hotel_images/$path';
   }
 
-  // FIXED: Corrected Google Maps URL construction
   Future<void> _openDirections() async {
     final rawLoc = widget.hotel['Hotel_Location'] ??
         widget.hotel['hotel_location'] ??
@@ -91,7 +88,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
     }
   }
 
-  // Call phone number
   Future<void> _callContact(String? contact) async {
     if (contact == null || contact.toString().trim().isEmpty) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No contact available')));
@@ -103,7 +99,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
     }
   }
 
-  // Address joiner
   String _joinAddress() {
     final h = widget.hotel;
     final a = (h['Address'] ?? h['address'] ?? h['Hotel_Address'] ?? '').toString();
@@ -115,7 +110,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
     return parts.join(', ');
   }
 
-  // Amenity icon mapper
   IconData _amenityIcon(String amenity) {
     final s = amenity.toLowerCase();
     if (s.contains('wifi')) return Icons.wifi;
@@ -138,7 +132,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
     final hotel = widget.hotel;
     final address = _joinAddress();
 
-    // Parse Room Types and Prices
     List<String> roomTypes = [];
     List<String> roomPrices = [];
 
@@ -157,7 +150,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
       amenities = hotel['Amenities'].toString().split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
     }
 
-    // --- POLICIES PARSING ---
     List<String> policies = [];
     final rawPolicies = hotel['Policies'] ?? hotel['policies'];
     if (rawPolicies != null && rawPolicies.toString().isNotEmpty) {
@@ -183,7 +175,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Image Carousel Section
               SizedBox(
                 height: 220,
                 child: Stack(
@@ -257,7 +248,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
 
               const SizedBox(height: 18),
 
-              // --- ROOM SELECTION SECTION ---
               roomTypes.isEmpty
                   ? Text("No rooms available", style: TextStyle(fontSize: 16, color: Colors.grey.shade600))
                   : SizedBox(
@@ -267,7 +257,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
                   itemCount: roomTypes.length,
                   itemBuilder: (context, index) {
                     final currentRoomType = roomTypes[index];
-                    // Ensure we pick the price matching the current index
                     final currentRoomPrice = index < roomPrices.length ? roomPrices[index] : '0';
 
                     return Center(
@@ -308,10 +297,8 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
                                   height: 42,
                                   child: ElevatedButton(
                                     onPressed: () {
-                                      // CRITICAL FIX: Explicitly create a clean map for the selected room
                                       final Map<String, dynamic> bookingData = Map<String, dynamic>.from(widget.hotel);
 
-                                      // Force update the selected room details based on the current index
                                       bookingData['Selected_Room_Type'] = currentRoomType;
                                       bookingData['Selected_Room_Price'] = currentRoomPrice;
                                       bookingData['Hotel_Address'] = address;

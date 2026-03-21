@@ -465,7 +465,6 @@ class _HotelsPageState extends State<HotelsPage>
                         final ratingDouble = double.tryParse(ratingRaw) ?? 0;
                         final ratingInt = ratingDouble.floor();
 
-                        // Logic to only FIND the minimum price for display, but NOT overwrite the original hotel data
                         String minDisplayPrice;
                         try {
                           final matches = RegExp(r'\d+').allMatches((hotel['Room_Price'] ?? '').toString());

@@ -22,7 +22,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
     with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> bookings = [];
   bool isLoading = true;
-  bool showUpcoming = true; // true => Upcoming, false => Past
+  bool showUpcoming = true;
 
   @override
   void initState() {
@@ -33,7 +33,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
   Future<void> fetchBookings() async {
     setState(() {
       isLoading = true;
-      bookings = []; // Clear old data immediately
+      bookings = [];
     });
 
     try {
@@ -63,27 +63,22 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
           final status = (e['booking_status'] ?? '').toString().toLowerCase();
 
           try {
-            // Fix: Parse check-out date correctly by splitting time if present
             final checkOutStr = e['check_out_date'].toString().split(" ").first;
             final checkOutDate = DateTime.parse(checkOutStr);
             final checkOutOnlyDate = DateTime(checkOutDate.year, checkOutDate.month, checkOutDate.day);
 
             if (showUpcoming) {
-              // Condition: Show if check-out is today or future
-              // This keeps Checked_In and Completed bookings visible in "Upcoming" until they are actually past.
               return checkOutOnlyDate.isAtSameMomentAs(today) || checkOutOnlyDate.isAfter(today);
             } else {
-              // Show only if check-out was before today
               return checkOutOnlyDate.isBefore(today);
             }
           } catch (_) {
-            return true; // Fallback to server's filtering if parsing fails
+            return true;
           }
         })
             .map((e) => Map<String, dynamic>.from(e))
             .toList();
 
-        // Sort on client
         filtered.sort((a, b) {
           final da = a['check_in_date']?.toString() ?? '';
           final db = b['check_in_date']?.toString() ?? '';

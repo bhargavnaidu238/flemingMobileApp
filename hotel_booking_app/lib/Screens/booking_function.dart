@@ -65,7 +65,6 @@ class _BookingPageState extends State<BookingPage> {
     return false;
   }
 
-  // FIXED: Logic to parse CSV strings "Standard,Suite" and "1000,5000" correctly
   Map<String, dynamic> get availableRoomsMap {
     if (hotel['Available_Rooms_Map'] != null && hotel['Available_Rooms_Map'] is Map) {
       return Map<String, dynamic>.from(hotel['Available_Rooms_Map']);
@@ -173,7 +172,6 @@ class _BookingPageState extends State<BookingPage> {
     return diff >= 0 ? diff : 0;
   }
 
-  // FIXED: Priorities the explicitly passed Selected Room Price
   double get roomPricePerDay {
     final selectedPrice = hotel['Selected_Room_Price'];
     if (selectedPrice != null) {
@@ -560,7 +558,7 @@ class _BookingPageState extends State<BookingPage> {
   }
 }
 
-// CustomizationPage remains unchanged
+// ====================== Customization Page=======================
 class CustomizationPage extends StatefulWidget {
   final Map hotel;
   final Map<String, dynamic> initialSelection;

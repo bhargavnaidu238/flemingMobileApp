@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'login_page.dart';
 import 'package:hotel_booking_app/services/api_service.dart';
@@ -8,6 +9,7 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
+  // Controllers
   final emailController = TextEditingController();
   final firstNameController = TextEditingController();
   final lastNameController = TextEditingController();
@@ -15,10 +17,19 @@ class _RegisterPageState extends State<RegisterPage> {
   final mobileController = TextEditingController();
   final passwordController = TextEditingController();
   final addressController = TextEditingController();
+  final otpController = TextEditingController();
 
+  // Logic States
+  bool isOtpSent = false;
+  bool isOtpVerified = false;
+  int _resendTimerSeconds = 60;
+  int _expiryTimerSeconds = 120; // 2 Minutes
+  int _otpAttemptsToday = 0;
+  Timer? _timer;
+
+  // Validation States
   String gender = 'Male';
   bool isConsentGiven = false;
-
   bool emailEmpty = false;
   bool firstNameEmpty = false;
   bool lastNameEmpty = false;
@@ -26,9 +37,48 @@ class _RegisterPageState extends State<RegisterPage> {
   bool passwordEmpty = false;
   bool addressEmpty = false;
 
+  void _startTimers() {
+    setState(() {
+      _resendTimerSeconds = 60;
+      _expiryTimerSeconds = 120;
+    });
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      setState(() {
+        if (_resendTimerSeconds > 0) _resendTimerSeconds--;
+        if (_expiryTimerSeconds > 0) {
+          _expiryTimerSeconds--;
+        } else {
+          _timer?.cancel();
+          _showMessage(context, "OTP Expired. Please resend.");
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    emailController.dispose();
+    firstNameController.dispose();
+    lastNameController.dispose();
+    mobileController.dispose();
+    passwordController.dispose();
+    addressController.dispose();
+    otpController.dispose();
+    super.dispose();
+  }
+
   void _showMessage(BuildContext context, String msg, {bool isSuccess = false}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: isSuccess ? Colors.green : Colors.red),
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: isSuccess ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
     );
   }
 
@@ -48,12 +98,12 @@ class _RegisterPageState extends State<RegisterPage> {
     }
 
     if (!emailController.text.trim().toLowerCase().endsWith("@gmail.com")) {
-      _showMessage(context, "Invalid Email Address (must end with @gmail.com)");
+      _showMessage(context, "Invalid Email (must be @gmail.com)");
       return false;
     }
 
-    if (mobileController.text.trim().length != 10 || !RegExp(r'^[0-9]+$').hasMatch(mobileController.text.trim())) {
-      _showMessage(context, "Mobile Number must be exactly 10 digits");
+    if (mobileController.text.trim().length != 10) {
+      _showMessage(context, "Mobile Number must be 10 digits");
       return false;
     }
 
@@ -65,9 +115,53 @@ class _RegisterPageState extends State<RegisterPage> {
     return true;
   }
 
-  Future<void> _register() async {
+  // Step 1: Request OTP
+  Future<void> _handleNext() async {
     if (!_validateInputs()) return;
 
+    if (_otpAttemptsToday >= 3) {
+      _showMessage(context, "Max attempts reached for today.");
+      return;
+    }
+
+    final statusCode = await ApiService.sendEmailOtpStatus(emailController.text.trim());
+
+    if (statusCode == 200) {
+      setState(() {
+        isOtpSent = true;
+        _otpAttemptsToday++;
+      });
+      _startTimers();
+      _showMessage(context, "Verification email sent!", isSuccess: true);
+    } else if (statusCode == 409) {
+      _showMessage(context, "User or Email Already Exists Error");
+    } else {
+      _showMessage(context, "Failed to send OTP. Try again later.");
+    }
+  }
+
+  // Step 2: Verify OTP
+  Future<void> _handleVerifyOtp(String otp) async {
+    if (otp.length != 6) return;
+
+    final success = await ApiService.verifyEmailOtp(
+      email: emailController.text.trim().toLowerCase(),
+      otp: otp.trim(),
+    );
+
+    if (success) {
+      setState(() => isOtpVerified = true);
+      _timer?.cancel();
+      _showMessage(context, "OTP Verified Successfully", isSuccess: true);
+    } else {
+      // Clear controller only on failure to let user retry
+      otpController.clear();
+      _showMessage(context, "Enter Wrong OTP Please try again.");
+    }
+  }
+
+  // Step 3: Register
+  Future<void> _register() async {
     String mobile = "+${countryCodeController.text.trim()}-${mobileController.text.trim()}";
 
     final success = await ApiService.registerUser(
@@ -82,53 +176,52 @@ class _RegisterPageState extends State<RegisterPage> {
     );
 
     if (success) {
-      _showMessage(context, "Registration Successful", isSuccess: true);
-      Navigator.pop(context);
+      _showMessage(context, "Registration Successful!", isSuccess: true);
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginPage()));
     } else {
-      _showMessage(context, "Registration Failed or Email Already Exists");
+      _showMessage(context, "Registration Failed. Please check your network.");
     }
+  }
+
+  void _onCancelClick() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Cancel Registration"),
+        content: const Text("Are you sure you want to land on Login Page?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("No")),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginPage()));
+            },
+            child: const Text("Yes"),
+          ),
+        ],
+      ),
+    );
   }
 
   InputDecoration _inputDecoration(String hint, bool isEmpty) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: Colors.black54, fontSize: 14),
+      hintStyle: const TextStyle(color: Colors.black54, fontSize: 14),
       filled: true,
       fillColor: Colors.grey[200],
-      contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 15),
-      counterText: "", // 👈 Removed "10/10" counter label
+      contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 15),
+      counterText: "",
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide(color: isEmpty ? Colors.red : Colors.transparent),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: Colors.blueAccent, width: 2),
+        borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
       ),
-    );
-  }
-
-  void _showConsentDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text("Terms & Conditions"),
-        content: SingleChildScrollView(
-          child: Text(
-            "Here will be the full consent text. Users must read and accept before proceeding.",
-            style: TextStyle(fontSize: 14),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text("Decline")),
-          TextButton(
-            onPressed: () {
-              setState(() => isConsentGiven = true);
-              Navigator.pop(context);
-            },
-            child: Text("Accept"),
-          ),
-        ],
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Colors.grey),
       ),
     );
   }
@@ -138,121 +231,128 @@ class _RegisterPageState extends State<RegisterPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: IntrinsicHeight(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        height: constraints.maxHeight * 0.25,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          image: DecorationImage(
-                            image: AssetImage('assets/LoginTheme.png'),
-                            fit: BoxFit.cover,
-                          ),
-                          borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-                        ),
-                      ),
-                      Column(
-                        children: [
-                          SizedBox(height: 10),
-                          TextField(controller: emailController, decoration: _inputDecoration('Email', emailEmpty)),
-                          SizedBox(height: 8),
-                          TextField(controller: firstNameController, decoration: _inputDecoration('First Name', firstNameEmpty)),
-                          SizedBox(height: 8),
-                          TextField(controller: lastNameController, decoration: _inputDecoration('Last Name', lastNameEmpty)),
-                          SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            value: gender,
-                            items: ['Male', 'Female', 'Other'].map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
-                            onChanged: (val) => setState(() => gender = val!),
-                            decoration: _inputDecoration('Gender', false),
-                          ),
-                          SizedBox(height: 8),
-
-                          Row(
-                            children: [
-                              Expanded(
-                                flex: 2,
-                                child: TextField(
-                                  controller: countryCodeController,
-                                  decoration: _inputDecoration('Code (91)', false),
-                                  keyboardType: TextInputType.number,
-                                ),
-                              ),
-                              SizedBox(width: 10),
-                              Expanded(
-                                flex: 5,
-                                child: TextField(
-                                  controller: mobileController,
-                                  decoration: _inputDecoration('Mobile Number', mobileEmpty),
-                                  keyboardType: TextInputType.phone,
-                                  maxLength: 10,  // 👈 still enforces length
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          SizedBox(height: 8),
-                          TextField(controller: addressController, decoration: _inputDecoration('Address', addressEmpty)),
-                          SizedBox(height: 8),
-                          TextField(controller: passwordController, decoration: _inputDecoration('Password', passwordEmpty), obscureText: true),
-                          SizedBox(height: 8),
-
-                          CheckboxListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Row(
-                              children: [
-                                Text('Agree to '),
-                                GestureDetector(
-                                  onTap: () => _showConsentDialog(context),
-                                  child: Text('Terms & Conditions', style: TextStyle(color: Colors.blue, decoration: TextDecoration.underline)),
-                                ),
-                              ],
-                            ),
-                            value: isConsentGiven,
-                            onChanged: (val) => setState(() => isConsentGiven = val ?? false),
-                          ),
-
-                          SizedBox(height: 8),
-                          Container(
-                            height: 45,
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10),
-                              gradient: LinearGradient(colors: [Colors.blueAccent, Colors.lightBlueAccent]),
-                            ),
-                            child: ElevatedButton(
-                              onPressed: isConsentGiven ? _register : null,
-                              style: ElevatedButton.styleFrom(
-                                elevation: 0,
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              child: Text("Register", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                            ),
-                          ),
-
-                          SizedBox(height: 5),
-                          TextButton(
-                            onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginPage())),
-                            child: Text("Back to Login", style: TextStyle(color: Colors.blueAccent, fontSize: 14)),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: Column(
+            children: [
+              Container(
+                height: 150,
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  image: DecorationImage(image: AssetImage('assets/LoginTheme.png'), fit: BoxFit.cover),
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
                 ),
               ),
-            );
-          },
+              const SizedBox(height: 15),
+
+              TextField(controller: emailController, decoration: _inputDecoration('Email', emailEmpty), enabled: !isOtpSent),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(child: TextField(controller: firstNameController, decoration: _inputDecoration('First Name', firstNameEmpty), enabled: !isOtpSent)),
+                  const SizedBox(width: 8),
+                  Expanded(child: TextField(controller: lastNameController, decoration: _inputDecoration('Last Name', lastNameEmpty), enabled: !isOtpSent)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: gender,
+                items: ['Male', 'Female', 'Other'].map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
+                onChanged: isOtpSent ? null : (val) => setState(() => gender = val!),
+                decoration: _inputDecoration('Gender', false),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(flex: 2, child: TextField(controller: countryCodeController, decoration: _inputDecoration('91', false), keyboardType: TextInputType.number, enabled: !isOtpSent)),
+                  const SizedBox(width: 10),
+                  Expanded(flex: 5, child: TextField(controller: mobileController, decoration: _inputDecoration('Mobile Number', mobileEmpty), keyboardType: TextInputType.phone, maxLength: 10, enabled: !isOtpSent)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextField(controller: addressController, decoration: _inputDecoration('Address', addressEmpty), enabled: !isOtpSent),
+              const SizedBox(height: 8),
+              TextField(controller: passwordController, decoration: _inputDecoration('Password', passwordEmpty), obscureText: true, enabled: !isOtpSent),
+
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Agree to Terms & Conditions', style: TextStyle(fontSize: 13)),
+                value: isConsentGiven,
+                onChanged: isOtpSent ? null : (val) => setState(() => isConsentGiven = val ?? false),
+              ),
+
+              if (isOtpSent && !isOtpVerified) ...[
+                const Divider(height: 30),
+                Text(
+                  "OTP Expires in: ${(_expiryTimerSeconds ~/ 60)}:${(_expiryTimerSeconds % 60).toString().padLeft(2, '0')}",
+                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: otpController,
+                  decoration: _inputDecoration('Enter 6 Digit OTP', false),
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(letterSpacing: 8, fontWeight: FontWeight.bold),
+                  onChanged: (val) {
+                    // We call the verification logic only when exactly 6 digits are typed
+                    if (val.trim().length == 6) {
+                      _handleVerifyOtp(val.trim());
+                    }
+                  },
+                ),
+                TextButton(
+                  onPressed: _resendTimerSeconds == 0 ? _handleNext : null,
+                  child: Text(_resendTimerSeconds == 0 ? "Resend OTP" : "Resend in ${_resendTimerSeconds}s"),
+                ),
+              ],
+
+              const SizedBox(height: 20),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _onCancelClick,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        side: const BorderSide(color: Colors.blueAccent),
+                      ),
+                      child: const Text("Cancel"),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        gradient: LinearGradient(
+                            colors: (isOtpVerified || !isOtpSent)
+                                ? [Colors.blueAccent, Colors.lightBlueAccent]
+                                : [Colors.grey, Colors.blueGrey]
+                        ),
+                      ),
+                      child: ElevatedButton(
+                        onPressed: !isOtpSent ? _handleNext : (isOtpVerified ? _register : null),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: Text(
+                          !isOtpSent ? "Next" : "Register",
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
