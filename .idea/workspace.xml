@@ -5,11 +5,24 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b3cc85d8-4294-490f-9bd6-972737d6cf1d" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.gradle/8.13/fileHashes/fileHashes.lock" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/8.13/fileHashes/fileHashes.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/Customize_Preference_Page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/Customize_Preference_Page.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/app_filters.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/app_filters.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/booking_function.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/booking_function.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/booking_history_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/booking_history_page.dart" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/home_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/home_page.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/hotel_ai_helper.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/hotel_ai_helper.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/hotel_payment.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/hotel_payment.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/hotels_details_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/hotels_details_page.dart" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/hotels_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/hotels_page.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/login_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/login_page.dart" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/paying_guests_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/paying_guests_page.dart" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hotel_booking_app/pubspec.lock" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/pubspec.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/profile.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/profile.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/register_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/register_page.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/rewards_wallet_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/rewards_wallet_page.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Services/api_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Services/api_service.dart" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/hotel_booking_app/pubspec.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/pubspec.yaml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -34,6 +47,18 @@
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;bhargavnaidu238&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/bhargavnaidu238/MobileApp.git&quot;,
+    &quot;accountId&quot;: &quot;aba9e357-b38b-4502-9cc0-384f7887f537&quot;
+  }
+}</component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 7
 }</component>

@@ -22,7 +22,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
     with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> bookings = [];
   bool isLoading = true;
-  bool showUpcoming = true; // true => Upcoming, false => Past
+  bool showUpcoming = true;
 
   @override
   void initState() {
@@ -33,7 +33,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
   Future<void> fetchBookings() async {
     setState(() {
       isLoading = true;
-      bookings = []; // Clear old data immediately
+      bookings = [];
     });
 
     try {
@@ -44,36 +44,49 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
             '&includeUpcoming=$showUpcoming',
       );
 
-      // debug print
-      // print('🔎 Fetching from: $uri');
-
       final response = await http.get(uri);
 
       if (response.statusCode == 200) {
         final List<dynamic> decoded = jsonDecode(response.body);
 
-        final filtered = decoded.where((e) {
-          if (e is Map<String, dynamic>) {
-            return e.containsKey('hotel_name') &&
-                e.containsKey('check_in_date') &&
-                e.containsKey('check_out_date');
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+
+        final List<Map<String, dynamic>> filtered = decoded
+            .whereType<Map<String, dynamic>>()
+            .where((e) {
+          final hasKeys = e.containsKey('hotel_name') &&
+              e.containsKey('check_in_date') &&
+              e.containsKey('check_out_date');
+          if (!hasKeys) return false;
+
+          final status = (e['booking_status'] ?? '').toString().toLowerCase();
+
+          try {
+            final checkOutStr = e['check_out_date'].toString().split(" ").first;
+            final checkOutDate = DateTime.parse(checkOutStr);
+            final checkOutOnlyDate = DateTime(checkOutDate.year, checkOutDate.month, checkOutDate.day);
+
+            if (showUpcoming) {
+              return checkOutOnlyDate.isAtSameMomentAs(today) || checkOutOnlyDate.isAfter(today);
+            } else {
+              return checkOutOnlyDate.isBefore(today);
+            }
+          } catch (_) {
+            return true;
           }
-          return false;
-        }).toList();
+        })
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
 
-        final List<Map<String, dynamic>> mapped =
-        filtered.map((e) => Map<String, dynamic>.from(e)).toList();
-
-        // Optional: sort on client for nice ordering
-        mapped.sort((a, b) {
+        filtered.sort((a, b) {
           final da = a['check_in_date']?.toString() ?? '';
           final db = b['check_in_date']?.toString() ?? '';
-          // For upcoming: earliest first, for past: latest first
           return showUpcoming ? da.compareTo(db) : db.compareTo(da);
         });
 
         setState(() {
-          bookings = mapped;
+          bookings = filtered;
           isLoading = false;
         });
       } else {
@@ -83,7 +96,6 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
         });
       }
     } catch (e) {
-      // print('❌ Error fetching bookings: $e');
       setState(() {
         bookings = [];
         isLoading = false;

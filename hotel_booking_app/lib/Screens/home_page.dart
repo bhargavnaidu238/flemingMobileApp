@@ -282,7 +282,6 @@ class _HomePageState extends State<HomePage> {
           final normalizedUser = _normalizeUser(widget.user);
 
           // 2. Pass the raw query as 'query'.
-          // We let the Java backend decide if it's a category or a name.
           Navigator.pushNamed(
             context,
             '/hotels',
@@ -473,7 +472,6 @@ class _HomePageState extends State<HomePage> {
                             onTap: () {
                               final normalizedUser = _normalizeUser(widget.user);
 
-                              // Navigate to paying_guest.dart page
                               Navigator.pushNamed(
                                 context,
                                 '/paying_guest',
@@ -481,14 +479,10 @@ class _HomePageState extends State<HomePage> {
                                   'user': normalizedUser,
                                 },
                               );
-
-                              // (No call to _fetchHotels)
                             },
                           );
                         }
-                        // ***********************************************************
 
-                        // OLD BEHAVIOR FOR OTHER CATEGORIES (unchanged)
                         return _buildCategoryCard(
                           title: item['title'],
                           icon: item['icon'],

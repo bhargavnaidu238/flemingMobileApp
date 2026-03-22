@@ -40,7 +40,7 @@ class HotelAIHelper extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
-                  "Hi $firstName! 👋\nHow can I help you today?",
+                  "Hi $firstName! \nHow can I help you today?",
                   style: const TextStyle(
                       fontSize: 16,
                       color: Colors.black87,

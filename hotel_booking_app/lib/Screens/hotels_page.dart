@@ -6,7 +6,6 @@ import 'hotels_details_page.dart';
 import 'hotel_ai_helper.dart';
 import 'app_filters.dart' as app_filters;
 import 'package:hotel_booking_app/services/api_service.dart';
-import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 
@@ -53,7 +52,6 @@ class _HotelsPageState extends State<HotelsPage>
 
   Future<void> _initDeviceLocation() async {
     try {
-      // 1. Check Permissions & Services
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         _updateLocationState('Location services disabled');
@@ -74,14 +72,11 @@ class _HotelsPageState extends State<HotelsPage>
         return;
       }
 
-      // 2. Fetch High Accuracy Position
-      // Using high accuracy ensures the 'exact' location rather than a tower-based guess
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 10),
       );
 
-      // 3. Reverse Geocode (Coordinates -> City/Address)
       List<Placemark> placemarks = await placemarkFromCoordinates(
           position.latitude,
           position.longitude
@@ -89,15 +84,12 @@ class _HotelsPageState extends State<HotelsPage>
 
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks[0];
-        // You can use place.subLocality, place.locality, or place.administrativeArea
         String cityName = place.locality ?? place.subAdministrativeArea ?? 'Unknown Location';
 
-        // 4. Update UI only if the user hasn't overridden it manually
         if (!isManualInput) {
           setState(() {
             deviceLocationDisplay = cityName;
           });
-          // Trigger data fetch
           await fetchHotelData(city: cityName);
         }
       } else {
@@ -116,7 +108,6 @@ class _HotelsPageState extends State<HotelsPage>
     }
   }
 
-// Call this when the user types in a location manually
   void onManualLocationInput(String input) {
     isManualInput = true;
     setState(() => deviceLocationDisplay = input);
@@ -178,18 +169,18 @@ class _HotelsPageState extends State<HotelsPage>
     }
   }
 
+  // --- ENSURE KEYS (Strictly preserving original data for Room Types/Prices) ---
   Map<String, dynamic> _ensureKeys(Map<String, dynamic> src) {
-    final Map<String, dynamic> out = {};
+    final Map<String, dynamic> out = Map<String, dynamic>.from(src);
+
     src.forEach((k, v) {
-      out[k] = v;
       final camel = _toCamelCase(k);
       out[camel] = out[camel] ?? v;
     });
 
     void copyIfMissing(List<String> possible, String target) {
       for (var p in possible) {
-        if (out.containsKey(p) &&
-            (out[target] == null || out[target].toString().isEmpty)) {
+        if (out.containsKey(p) && (out[target] == null || out[target].toString().isEmpty)) {
           out[target] = out[p];
           break;
         }
@@ -216,25 +207,19 @@ class _HotelsPageState extends State<HotelsPage>
         imgs = rawImgs.map((e) => e.toString().trim()).toList();
       } else {
         final s = rawImgs.toString().trim();
-        // Split by comma first to handle the Supabase CSV format
         imgs = s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
       }
     }
 
-    // Process each image: Keep Supabase URLs as is, Fix local paths
     final fixed = imgs.map((e) {
       String link = e;
       if (link.contains("localhost")) {
         link = link.replaceAll("localhost", "10.0.2.2");
       }
-
-      // If it's a Supabase link or full URL, don't prepend the local host
       if (link.toLowerCase().startsWith("http://") || link.toLowerCase().startsWith("https://")) {
         return link;
       }
-
-      // Only prepend if it's a raw filename from local storage
-      return "http://10.0.2.2:8080/hotel_images/$link";
+      return "${ApiConfig.baseUrl}/hotel_images/$link";
     }).toList();
 
     out['Hotel_Images'] = fixed.join(',');
@@ -261,7 +246,7 @@ class _HotelsPageState extends State<HotelsPage>
     final results = hotels.where((hotel) {
       final name = (hotel['Hotel_Name'] ?? '').toString().toLowerCase();
       final city = (hotel['City'] ?? '').toString().toLowerCase();
-      final desc = (hotel['Description'] ?? '').toString().toLowerCase();
+      final desc = (hotel['about_this_property'] ?? '').toString().toLowerCase();
       return name.contains(q) || city.contains(q) || desc.contains(q);
     }).toList();
     setState(() => filteredHotels = results);
@@ -353,7 +338,7 @@ class _HotelsPageState extends State<HotelsPage>
     final minRating = (currentFilters['rating'] ?? currentFilters['minRating'] ?? 0) as num;
 
     final results = hotels.where((hotel) {
-      final rawPrice = (hotel['Room_Price'] ?? '').toString();
+      final rawPrice = (hotel['Room_Price'] ?? hotel['room_price'] ?? '').toString();
       num price = 0;
       try {
         final matches = RegExp(r'\d+').allMatches(rawPrice);
@@ -467,7 +452,6 @@ class _HotelsPageState extends State<HotelsPage>
                       itemBuilder: (context, index) {
                         final hotel = filteredHotels[index];
 
-                        // EXTRACT IMAGES HERE
                         List<String> images = [];
                         if (hotel['Hotel_Images'] != null && hotel['Hotel_Images'].toString().isNotEmpty) {
                           images = hotel['Hotel_Images'].toString().split(',');
@@ -481,12 +465,12 @@ class _HotelsPageState extends State<HotelsPage>
                         final ratingDouble = double.tryParse(ratingRaw) ?? 0;
                         final ratingInt = ratingDouble.floor();
 
-                        String roomPrice;
+                        String minDisplayPrice;
                         try {
                           final matches = RegExp(r'\d+').allMatches((hotel['Room_Price'] ?? '').toString());
                           final parsed = matches.map((m) => num.tryParse(m.group(0)!) ?? 0).where((v) => v > 0).toList();
-                          roomPrice = parsed.isEmpty ? '' : parsed.reduce((a, b) => a < b ? a : b).toString();
-                        } catch (_) { roomPrice = ''; }
+                          minDisplayPrice = parsed.isEmpty ? '' : parsed.reduce((a, b) => a < b ? a : b).toString();
+                        } catch (_) { minDisplayPrice = ''; }
 
                         final amenities = (hotel['Amenities'] ?? '').toString().split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
 
@@ -550,7 +534,7 @@ class _HotelsPageState extends State<HotelsPage>
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(gradient: const LinearGradient(colors: [Colors.green, Colors.lightGreen]), borderRadius: BorderRadius.circular(8)),
-                                    child: Text("Starts from ₹${roomPrice.isEmpty ? 'N/A' : roomPrice} / night", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                    child: Text("Starts from ₹${minDisplayPrice.isEmpty ? 'N/A' : minDisplayPrice} / night", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                   ),
                                 ],
                               ),

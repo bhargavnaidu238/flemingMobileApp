@@ -117,7 +117,6 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
   Map<String, dynamic> _ensureKeys(Map<String, dynamic> src) {
     final Map<String, dynamic> out = {}..addAll(src);
 
-    // Normalize keys for PG images
     final rawImgs = out['pg_images'] ?? out['PG_Images'];
     List<String> imgs = [];
 
@@ -126,7 +125,6 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
         imgs = rawImgs.map((e) => e.toString().trim()).toList();
       } else if (rawImgs is String) {
         String s = rawImgs.trim();
-        // Handle CSV split for Supabase strings
         imgs = s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
       }
     }
@@ -134,12 +132,10 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
     final cleaned = imgs.map((url) {
       String link = url.trim().replaceAll("\\", "/");
 
-      // If it's a web URL (Supabase), leave as is
       if (link.toLowerCase().startsWith("http://") || link.toLowerCase().startsWith("https://")) {
         return link.replaceAll("[", "").replaceAll("]", "").replaceAll("\"", "");
       }
 
-      // Local path fix
       link = link.replaceAll("[", "").replaceAll("]", "").replaceAll("\"", "");
       return "${ApiConfig.baseUrl}/hotel_images/$link";
     }).toList();
@@ -203,7 +199,6 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
     if (locationData == null || locationData.trim().isEmpty) return;
 
     Uri url;
-    // Check if locationData contains latitude/longitude (from hotel_location column)
     if (locationData.contains(',')) {
       url = Uri.parse("https://www.google.com/maps/search/?api=1&query=$locationData");
     } else {
