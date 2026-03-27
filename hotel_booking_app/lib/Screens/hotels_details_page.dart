@@ -27,62 +27,163 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
     images = _parseImages(widget.hotel['Hotel_Images'] ?? widget.hotel['hotel_images']);
   }
 
-  // -------------------- IMAGE PARSER --------------------
+  // -------------------- NEW: DYNAMIC RATING BOTTOM SHEET --------------------
+  void _showReviewSummary(double avgRating, int totalReviews) async {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return FutureBuilder<List<dynamic>>(
+          future: ReviewApiService.fetchReviews(widget.hotel['Hotel_ID'] ?? widget.hotel['hotel_id'] ?? ''),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(height: 300, child: Center(child: CircularProgressIndicator()));
+            }
+
+            final allReviews = snapshot.data ?? [];
+
+            // Calculate distribution from the fetched reviews
+            int count5 = allReviews.where((r) => int.tryParse(r['rating'].toString()) == 5).length;
+            int count4 = allReviews.where((r) => int.tryParse(r['rating'].toString()) == 4).length;
+            int count3 = allReviews.where((r) => int.tryParse(r['rating'].toString()) == 3).length;
+            int count2 = allReviews.where((r) => int.tryParse(r['rating'].toString()) == 2).length;
+            int count1 = allReviews.where((r) => int.tryParse(r['rating'].toString()) == 1).length;
+
+            return Container(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Ratings & Reviews", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      if (totalReviews > 0)
+                        Row(
+                          children: [
+                            const Icon(Icons.star, color: Colors.orangeAccent, size: 20),
+                            Text(" $avgRating (Avg rating)", style: const TextStyle(fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                    ],
+                  ),
+                  const Divider(height: 30),
+                  if (totalReviews == 0)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Column(
+                        children: [
+                          Icon(Icons.rate_review_outlined, size: 50, color: Colors.grey),
+                          SizedBox(height: 10),
+                          Text("No reviews yet", style: TextStyle(fontSize: 16, color: Colors.grey)),
+                          Text("Be the first to share your experience!", style: TextStyle(fontSize: 13, color: Colors.grey)),
+                        ],
+                      ),
+                    )
+                  else
+                    Column(
+                      children: [
+                        _buildRatingBar(5, count5 / totalReviews, count5),
+                        _buildRatingBar(4, count4 / totalReviews, count4),
+                        _buildRatingBar(3, count3 / totalReviews, count3),
+                        _buildRatingBar(2, count2 / totalReviews, count2),
+                        _buildRatingBar(1, count1 / totalReviews, count1),
+                      ],
+                    ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(context, '/all-reviews', arguments: {
+                          'hotel_id': widget.hotel['Hotel_ID'] ?? widget.hotel['hotel_id'],
+                          'hotel_name': widget.hotel['Hotel_Name'] ?? widget.hotel['hotel_name'],
+                        });
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: Text(
+                          totalReviews > 0 ? "Read all reviews ($totalReviews) -->" : "Write a review",
+                          style: const TextStyle(color: Colors.white, fontSize: 16)
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildRatingBar(int star, double percent, int count) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Text("$star *", style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(5),
+              child: LinearProgressIndicator(
+                value: percent.isNaN ? 0.0 : percent,
+                backgroundColor: Colors.grey[200],
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.orangeAccent),
+                minHeight: 8,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text("$count", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  // -------------------- IMAGE PARSER (RESTORED) --------------------
   List<String> _parseImages(dynamic raw) {
     if (raw == null) return [];
-
     if (raw is List) {
-      return raw
-          .map((e) => e.toString().trim())
-          .where((e) => e.isNotEmpty)
-          .map(_resolveImageUrl)
-          .toList();
+      return raw.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).map(_resolveImageUrl).toList();
     }
     String s = raw.toString().trim();
-
     if (s.startsWith('[') && s.endsWith(']')) {
       s = s.substring(1, s.length - 1);
     }
     s = s.replaceAll('"', '');
-
-    final parts = s
-        .split(',')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .map(_resolveImageUrl)
-        .toList();
-
+    final parts = s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).map(_resolveImageUrl).toList();
     return parts;
   }
 
   String _resolveImageUrl(String url) {
     url = url.trim().replaceAll('\\', '/');
     url = url.replaceAll(RegExp(r'^\[+'), '').replaceAll(RegExp(r'\]+$'), '');
-
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return url;
     }
-
     final path = url.startsWith('/') ? url.substring(1) : url;
     return '${ApiConfig.baseUrl}/hotel_images/$path';
   }
 
   Future<void> _openDirections() async {
-    final rawLoc = widget.hotel['Hotel_Location'] ??
-        widget.hotel['hotel_location'] ??
-        widget.hotel['location'];
-
+    final rawLoc = widget.hotel['Hotel_Location'] ?? widget.hotel['hotel_location'] ?? widget.hotel['location'];
     if (rawLoc == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No location available for this hotel')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No location available for this hotel')));
       }
       return;
     }
-
     final loc = rawLoc.toString().trim();
     final Uri googleMapsUrl = Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(loc)}");
-
     if (await canLaunchUrl(googleMapsUrl)) {
       await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
     }
@@ -134,7 +235,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
 
     List<String> roomTypes = [];
     List<String> roomPrices = [];
-
     final rawTypes = hotel['Room_Type'] ?? hotel['room_type'] ?? '';
     final rawPrices = hotel['Room_Price'] ?? hotel['room_price'] ?? '';
 
@@ -157,9 +257,10 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
     }
 
     final hotelName = hotel['Hotel_Name'] ?? hotel['hotel_name'] ?? 'Unknown Hotel';
-    final ratingVal = (hotel['Rating'] ?? hotel['rating'] ?? '0').toString();
-    final ratingDouble = double.tryParse(ratingVal) ?? 0.0;
-    final ratingInt = ratingDouble.floor();
+    final String rawRating = (hotel['avg_rating'] ?? hotel['Avg_Rating'] ?? '0').toString();
+    final double ratingDouble = double.tryParse(rawRating) ?? 0.0;
+    final String rawReviews = (hotel['total_reviews'] ?? hotel['Total_Reviews'] ?? '0').toString();
+    final int totalReviews = int.tryParse(rawReviews) ?? 0;
     final contact = hotel['Hotel_Contact'] ?? hotel['hotel_contact'] ?? '';
 
     return Scaffold(
@@ -228,26 +329,41 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
                     child: Text(hotelName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
                   ),
                   const SizedBox(width: 8),
-                  Row(
-                    children: List.generate(5, (i) => Icon(i < ratingInt ? Icons.star : Icons.star_border, size: 20, color: Colors.orangeAccent)),
+                  InkWell(
+                    onTap: () => _showReviewSummary(ratingDouble, totalReviews),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Row(
+                          children: List.generate(5, (i) => Icon(
+                              i < ratingDouble.floor() ? Icons.star : Icons.star_border,
+                              size: 20,
+                              color: Colors.orangeAccent
+                          )),
+                        ),
+                        Text("($totalReviews reviews)",
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[700],
+                                decoration: TextDecoration.underline
+                            )
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-
               const SizedBox(height: 12),
               const Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
                 _HighlightIcon(icon: Icons.settings, label: "Customization"),
                 _HighlightIcon(icon: Icons.restaurant, label: "Meals"),
                 _HighlightIcon(icon: Icons.wifi, label: "WiFi"),
               ]),
-
               const SizedBox(height: 16),
               _ContactRow(icon: Icons.location_on, text: address, onTap: _openDirections),
               const SizedBox(height: 8),
               _ContactRow(icon: Icons.call, text: contact.toString().isNotEmpty ? contact.toString() : 'N/A', onTap: () => _callContact(contact.toString())),
-
               const SizedBox(height: 18),
-
               roomTypes.isEmpty
                   ? Text("No rooms available", style: TextStyle(fontSize: 16, color: Colors.grey.shade600))
                   : SizedBox(
@@ -298,12 +414,10 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
                                   child: ElevatedButton(
                                     onPressed: () {
                                       final Map<String, dynamic> bookingData = Map<String, dynamic>.from(widget.hotel);
-
                                       bookingData['Selected_Room_Type'] = currentRoomType;
                                       bookingData['Selected_Room_Price'] = currentRoomPrice;
                                       bookingData['Hotel_Address'] = address;
                                       bookingData['is_hotel'] = true;
-
                                       Navigator.pushNamed(context, '/booking', arguments: {
                                         'hotel': bookingData,
                                         'user': widget.user,
@@ -327,7 +441,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
                   },
                 ),
               ),
-
               const SizedBox(height: 20),
               if (policies.isNotEmpty) ...[
                 const Text("Policies", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
@@ -344,13 +457,9 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
                 )).toList(),
                 const SizedBox(height: 20),
               ],
-
               const Text("About Hotel", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              Text(
-                  hotel['about_this_property'] ?? hotel['About_This_Property'] ?? 'No description available.',
-                  style: const TextStyle(fontSize: 15)
-              ),
+              Text(hotel['about_this_property'] ?? hotel['About_This_Property'] ?? 'No description available.', style: const TextStyle(fontSize: 15)),
               const SizedBox(height: 30),
             ],
           ),
@@ -360,14 +469,11 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
   }
 }
 
-// -------------------- HELPER WIDGETS --------------------
-
 class _CarouselNavButton extends StatelessWidget {
   final IconData icon;
   final Alignment alignment;
   final VoidCallback onTap;
   const _CarouselNavButton({required this.icon, required this.alignment, required this.onTap});
-
   @override
   Widget build(BuildContext context) => Align(
     alignment: alignment,
@@ -388,7 +494,6 @@ class _ContactRow extends StatelessWidget {
   final String text;
   final VoidCallback onTap;
   const _ContactRow({required this.icon, required this.text, required this.onTap});
-
   @override
   Widget build(BuildContext context) => Row(
     children: [

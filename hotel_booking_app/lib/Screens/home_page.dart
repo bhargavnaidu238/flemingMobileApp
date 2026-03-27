@@ -20,6 +20,9 @@ class _HomePageState extends State<HomePage> {
 
   bool _isLoading = false;
 
+  // NEW: Added this to hold the user data locally so it survives the restart
+  late Map<String, dynamic> _currentUser;
+
   final List<Map<String, String>> bannerData = [
     {
       'title': 'Luxury Hotels',
@@ -106,6 +109,23 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _bannerController = PageController();
     _autoSlideBanners();
+
+    // SAFETY NET: If widget.user is empty (after app kill), get details from the disk
+    _initUser();
+  }
+
+  void _initUser() {
+    final normalized = _normalizeUser(widget.user);
+    if (normalized['email'] == null || normalized['email'].isEmpty) {
+      _currentUser = {
+        'userId': ApiService.getUserId() ?? '',
+        'name': ApiService.getUserName() ?? 'User',
+        'email': ApiService.getEmail() ?? '',
+        'mobile': ApiService.getUserMobile() ?? '',
+      };
+    } else {
+      _currentUser = normalized;
+    }
   }
 
   void _autoSlideBanners() {
@@ -126,13 +146,13 @@ class _HomePageState extends State<HomePage> {
   void _onNavTap(int index) {
     setState(() => _selectedIndex = index);
     Future.microtask(() {
-      final normalizedUser = _normalizeUser(widget.user);
+      // Changed from normalizedUser to _currentUser to ensure persistence
       if (index == 0) {
-        Navigator.pushReplacementNamed(context, '/home', arguments: normalizedUser);
+        Navigator.pushReplacementNamed(context, '/home', arguments: _currentUser);
       } else if (index == 1) {
-        Navigator.pushNamed(context, '/history', arguments: normalizedUser);
+        Navigator.pushNamed(context, '/history', arguments: _currentUser);
       } else if (index == 2) {
-        Navigator.pushNamed(context, '/profile', arguments: normalizedUser);
+        Navigator.pushNamed(context, '/profile', arguments: _currentUser);
       }
     });
   }
@@ -240,12 +260,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-// Inside your State class:
   final TextEditingController _searchController = TextEditingController();
 
   @override
   void dispose() {
     _searchController.dispose();
+    _bannerController.dispose(); // Added to prevent memory leaks
     super.dispose();
   }
 
@@ -264,7 +284,7 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       child: TextField(
-        controller: _searchController, // Attached controller
+        controller: _searchController,
         decoration: const InputDecoration(
           hintText: "Search category (Hotel, Resort) or Name...",
           prefixIcon: Icon(Icons.search),
@@ -276,17 +296,13 @@ class _HomePageState extends State<HomePage> {
           String trimmedQuery = query.trim();
           if (trimmedQuery.isEmpty) return;
 
-          // 1. Clear the search bar immediately
           _searchController.clear();
 
-          final normalizedUser = _normalizeUser(widget.user);
-
-          // 2. Pass the raw query as 'query'.
           Navigator.pushNamed(
             context,
             '/hotels',
             arguments: {
-              'user': normalizedUser,
+              'user': _currentUser, // Using persisted user
               'query': trimmedQuery,
             },
           );
@@ -403,13 +419,12 @@ class _HomePageState extends State<HomePage> {
         leading: IconButton(
           icon: const Icon(Icons.person),
           onPressed: () {
-            final normalizedUser = _normalizeUser(widget.user);
             Navigator.pushNamed(
               context,
               '/profile',
               arguments: {
-                'email': normalizedUser['email'],
-                'userId': normalizedUser['user_id'],
+                'email': _currentUser['email'],
+                'userId': _currentUser['user_id'],
               },
             );
           },
@@ -463,20 +478,17 @@ class _HomePageState extends State<HomePage> {
                       itemBuilder: (context, index) {
                         final item = categories[index];
 
-                        // ************* PAYING GUEST SPECIAL HANDLING *************
                         if (item['type'] == 'paying guest') {
                           return _buildCategoryCard(
                             title: item['title'],
                             icon: item['icon'],
                             gradientColors: item['color'],
                             onTap: () {
-                              final normalizedUser = _normalizeUser(widget.user);
-
                               Navigator.pushNamed(
                                 context,
                                 '/paying_guest',
                                 arguments: {
-                                  'user': normalizedUser,
+                                  'user': _currentUser,
                                 },
                               );
                             },
@@ -489,11 +501,10 @@ class _HomePageState extends State<HomePage> {
                           gradientColors: item['color'],
                           onTap: () {
                             final type = item['type'] as String;
-                            final normalizedUser = _normalizeUser(widget.user);
                             Navigator.pushNamed(
                               context,
                               '/hotels',
-                              arguments: {'user': normalizedUser, 'type': type},
+                              arguments: {'user': _currentUser, 'type': type},
                             );
 
                             _fetchHotels(type: type).then((_) {}).catchError((_) {});

@@ -118,7 +118,21 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    Navigator.pushReplacementNamed(context, '/home', arguments: res);
+    // PERSISTENCE FIX:
+    final Map<String, dynamic> userToPass = {
+      'userId': res['userId']?.toString() ?? ApiService.getUserId() ?? '',
+      'email': res['email'] ?? email,
+      'name': ApiService.getUserName() ?? "${res['firstName'] ?? ''} ${res['lastName'] ?? ''}".trim(),
+      'mobile': res['mobile'] ?? ApiService.getUserMobile() ?? '',
+      ...res
+    };
+
+    Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/home',
+            (route) => false,
+        arguments: userToPass
+    );
   }
 
   void snack(String msg) {
@@ -206,9 +220,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final newPassController = TextEditingController();
   final confirmPassController = TextEditingController();
 
-  int step = 1; // 1: Identifier, 2: OTP, 3: New Password
+  int step = 1;
   bool loading = false;
-
   Timer? _timer;
   int _secondsRemaining = 60;
 
@@ -239,23 +252,17 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // Step 1: Request OTP via Backend (Modified to use Forgot Password specific API)
   Future<void> requestOtp() async {
     if (emailController.text.isEmpty || mobileController.text.isEmpty) {
       snack("Please enter both Email and Mobile");
       return;
     }
-
     setState(() => loading = true);
-
-    // Using verifyForgotPassword to check details + trigger OTP
     final res = await ApiService.verifyForgotPassword(
       email: emailController.text.trim(),
       mobile: mobileController.text.trim(),
     );
-
     setState(() => loading = false);
-
     if (res['matched'] == true) {
       setState(() => step = 2);
       _startTimer();
@@ -265,17 +272,14 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     }
   }
 
-  // Step 2: Verify OTP
   Future<void> verifyOtp(String val) async {
     if (val.length != 6) return;
-
     setState(() => loading = true);
     final success = await ApiService.verifyEmailOtp(
       email: emailController.text.trim(),
       otp: val.trim(),
     );
     setState(() => loading = false);
-
     if (success) {
       setState(() => step = 3);
       _timer?.cancel();
@@ -285,7 +289,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     }
   }
 
-  // Step 3: Change Password
   Future<void> changePassword() async {
     if (newPassController.text.isEmpty || confirmPassController.text.isEmpty) {
       snack("Please fill both password fields");
@@ -295,14 +298,12 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       snack("Passwords do not match");
       return;
     }
-
     setState(() => loading = true);
     final res = await ApiService.changePassword(
       email: emailController.text.trim(),
       newPassword: newPassController.text,
     );
     setState(() => loading = false);
-
     if (res['success'] == true) {
       snack("Password changed successfully");
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginPage()));
@@ -332,27 +333,20 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // STEP 1: Identification
             if (step == 1) ...[
               TextField(controller: emailController, decoration: authInput("Email")),
               const SizedBox(height: 12),
               TextField(controller: mobileController, decoration: authInput("Mobile Number")),
             ],
-
-            // STEP 2: OTP Verification
             if (step == 2) ...[
-              Text("Code sent to ${emailController.text}",
-                  style: const TextStyle(fontSize: 12, color: Colors.black)),
+              Text("Code sent to ${emailController.text}", style: const TextStyle(fontSize: 12, color: Colors.black)),
               const SizedBox(height: 12),
               TextField(
                 controller: otpController,
                 decoration: authInput("6 Digit OTP"),
                 keyboardType: TextInputType.number,
                 maxLength: 6,
-                onChanged: (val) {
-                  if (val.length == 6) verifyOtp(val);
-                },
+                onChanged: (val) { if (val.length == 6) verifyOtp(val); },
               ),
               Center(
                 child: TextButton(
@@ -364,16 +358,12 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                 ),
               ),
             ],
-
-            // STEP 3: Reset Password
             if (step == 3) ...[
               TextField(controller: newPassController, obscureText: true, decoration: authInput("New Password")),
               const SizedBox(height: 12),
               TextField(controller: confirmPassController, obscureText: true, decoration: authInput("Confirm Password")),
             ],
-
             const SizedBox(height: 20),
-
             if (loading)
               const Center(child: CircularProgressIndicator(color: Colors.black))
             else
@@ -391,7 +381,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  if (step != 2) // Button hidden during auto-verify Step 2
+                  if (step != 2)
                     Expanded(
                       child: authButton(
                         step == 3 ? "Change Password" : "Next",

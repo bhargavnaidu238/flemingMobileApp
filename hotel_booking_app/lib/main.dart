@@ -12,6 +12,7 @@ import 'screens/profile.dart';
 import 'screens/booking_history_page.dart';
 import 'screens/hotels_page.dart';
 import 'screens/paying_guests_page.dart' as pgs;
+import 'screens/reviews_page.dart';
 
 // Service Imports
 import 'services/api_service.dart';
@@ -31,7 +32,6 @@ Future<void> main() async {
 // ================= FETCH SUPABASE CONFIG FROM BACKEND =================
 Future<void> _initializeSupabaseFromBackend() async {
   try {
-    // Note: Ensure ApiConfig.baseUrl is defined in your api_service.dart
     final response = await http.get(
       Uri.parse("${ApiConfig.baseUrl}/config/supabase"),
     );
@@ -52,6 +52,17 @@ Future<void> _initializeSupabaseFromBackend() async {
 }
 
 class MyApp extends StatelessWidget {
+  // HELPER: This creates a user map from the cache
+  // Centralized here to be used by both 'home' property and 'onGenerateRoute'
+  Map<String, dynamic> _getCachedUser() {
+    return {
+      'userId': ApiService.getUserId() ?? '',
+      'name': ApiService.getUserName() ?? 'User',
+      'email': ApiService.getEmail() ?? '',
+      'mobile': ApiService.getUserMobile() ?? '',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -60,9 +71,13 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.lime,
         scaffoldBackgroundColor: Colors.white,
       ),
-      // PERSISTENCE FIX: This line checks if the user is already logged in
-      // from a previous session and skips the login page entirely.
-      initialRoute: ApiService.isLoggedIn() ? '/home' : '/',
+
+      // FIX: Instead of initialRoute, we use 'home'.
+      // If logged in, we start directly at HomePage with NO back-stack.
+      // If not logged in, we start at LoginPage.
+      home: ApiService.isLoggedIn()
+          ? home.HomePage(user: _getCachedUser())
+          : LoginPage(),
 
       onGenerateRoute: (settings) {
         switch (settings.name) {
@@ -76,15 +91,7 @@ class MyApp extends StatelessWidget {
             return MaterialPageRoute(builder: (_) => RegisterPage());
 
           case '/home':
-            final user = settings.arguments as Map<String, dynamic>? ?? {
-              'userId': ApiService.getUserId() ?? '',
-              'name': 'User',
-              'email': ApiService.getEmail() ?? '',
-              'mobile': ''
-            };
-            // FIX: We use a standard MaterialPageRoute here.
-            // The "Back Button" fix actually happens in your Logout button logic
-            // by using pushNamedAndRemoveUntil.
+            final user = settings.arguments as Map<String, dynamic>? ?? _getCachedUser();
             return MaterialPageRoute(
               builder: (_) => home.HomePage(user: user),
               settings: const RouteSettings(name: '/home'),
@@ -92,24 +99,14 @@ class MyApp extends StatelessWidget {
 
           case '/hotels':
             final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final user = args['user'] as Map<String, dynamic>? ?? {
-              'userId': ApiService.getUserId() ?? '',
-              'name': 'User',
-              'email': ApiService.getEmail() ?? '',
-              'mobile': ''
-            };
+            final user = args['user'] as Map<String, dynamic>? ?? _getCachedUser();
             return MaterialPageRoute(
               builder: (_) => HotelsPage(user: user, type: args['type'] ?? "all"),
             );
 
           case '/paying_guest':
             final args = settings.arguments as Map<String, dynamic>? ?? {};
-            final user = args['user'] as Map<String, dynamic>? ?? {
-              'userId': ApiService.getUserId() ?? '',
-              'name': 'User',
-              'email': ApiService.getEmail() ?? '',
-              'mobile': ''
-            };
+            final user = args['user'] as Map<String, dynamic>? ?? _getCachedUser();
             return MaterialPageRoute(
               builder: (_) => pgs.PgsPage(user: user, type: args['type'] ?? "PG"),
             );
@@ -117,11 +114,7 @@ class MyApp extends StatelessWidget {
           case '/booking':
             final args = settings.arguments as Map<String, dynamic>? ?? {};
             final Map<String, dynamic> hotelOrPg = args['hotel'] ?? args['pg'] ?? {};
-            final Map<String, dynamic> userData = args['user'] ?? {
-              'userId': ApiService.getUserId() ?? '',
-              'name': 'User',
-              'email': ApiService.getEmail() ?? '',
-            };
+            final Map<String, dynamic> userData = args['user'] ?? _getCachedUser();
 
             return MaterialPageRoute(
               builder: (context) => BookingPage(
@@ -147,6 +140,12 @@ class MyApp extends StatelessWidget {
                   email: args['email'] ?? ApiService.getEmail() ?? '',
                   userId: args['userId'] ?? ApiService.getUserId() ?? ''
               ),
+            );
+
+          case '/all-reviews':
+            final args = settings.arguments as Map<String, dynamic>? ?? {};
+            return MaterialPageRoute(
+              builder: (_) => ReviewsPage(arguments: args),
             );
 
           default:
