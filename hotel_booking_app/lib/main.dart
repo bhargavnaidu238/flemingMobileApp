@@ -2,8 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-// Internal Screen Imports
 import 'screens/login_page.dart';
 import 'screens/register_page.dart';
 import 'screens/home_page.dart' as home;
@@ -13,15 +11,10 @@ import 'screens/booking_history_page.dart';
 import 'screens/hotels_page.dart';
 import 'screens/paying_guests_page.dart' as pgs;
 import 'screens/reviews_page.dart';
-
-// Service Imports
 import 'services/api_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Load user data from local storage (SharedPreferences)
-  // This ensures ApiService.isLoggedIn() returns true if the app was just closed.
   await ApiService.init();
 
   await _initializeSupabaseFromBackend();
@@ -52,8 +45,6 @@ Future<void> _initializeSupabaseFromBackend() async {
 }
 
 class MyApp extends StatelessWidget {
-  // HELPER: This creates a user map from the cache
-  // Centralized here to be used by both 'home' property and 'onGenerateRoute'
   Map<String, dynamic> _getCachedUser() {
     return {
       'userId': ApiService.getUserId() ?? '',
@@ -61,6 +52,15 @@ class MyApp extends StatelessWidget {
       'email': ApiService.getEmail() ?? '',
       'mobile': ApiService.getUserMobile() ?? '',
     };
+  }
+
+  String _sanitizeType(dynamic type, String defaultValue) {
+    if (type == null || type.toString().isEmpty) return defaultValue;
+    String t = type.toString().trim();
+    if (t.toLowerCase().endsWith('s') && t.toLowerCase() != 'others' && t.length > 3) {
+      return t.substring(0, t.length - 1);
+    }
+    return t;
   }
 
   @override
@@ -72,9 +72,6 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
       ),
 
-      // FIX: Instead of initialRoute, we use 'home'.
-      // If logged in, we start directly at HomePage with NO back-stack.
-      // If not logged in, we start at LoginPage.
       home: ApiService.isLoggedIn()
           ? home.HomePage(user: _getCachedUser())
           : LoginPage(),
@@ -100,15 +97,21 @@ class MyApp extends StatelessWidget {
           case '/hotels':
             final args = settings.arguments as Map<String, dynamic>? ?? {};
             final user = args['user'] as Map<String, dynamic>? ?? _getCachedUser();
+
+            final String cleanType = _sanitizeType(args['type'], "Hotel");
+
             return MaterialPageRoute(
-              builder: (_) => HotelsPage(user: user, type: args['type'] ?? "all"),
+              builder: (_) => HotelsPage(user: user, type: cleanType),
             );
 
           case '/paying_guest':
             final args = settings.arguments as Map<String, dynamic>? ?? {};
             final user = args['user'] as Map<String, dynamic>? ?? _getCachedUser();
+
+            final String cleanPgType = _sanitizeType(args['type'], "paying guest");
+
             return MaterialPageRoute(
-              builder: (_) => pgs.PgsPage(user: user, type: args['type'] ?? "PG"),
+              builder: (_) => pgs.PgsPage(user: user, type: cleanPgType),
             );
 
           case '/booking':

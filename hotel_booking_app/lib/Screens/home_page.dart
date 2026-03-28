@@ -20,7 +20,6 @@ class _HomePageState extends State<HomePage> {
 
   bool _isLoading = false;
 
-  // NEW: Added this to hold the user data locally so it survives the restart
   late Map<String, dynamic> _currentUser;
 
   final List<Map<String, String>> bannerData = [
@@ -49,7 +48,7 @@ class _HomePageState extends State<HomePage> {
       'color': [Color(0xFF263238), Color(0xFF607D8B)]
     },
     {
-      'title': 'Farm Stays',
+      'title': 'Farm House',
       'icon': Icons.agriculture,
       'type': 'Farm House',
       'color': [Color(0xFF1B5E20), Color(0xFF4CAF50)]
@@ -57,7 +56,7 @@ class _HomePageState extends State<HomePage> {
     {
       'title': 'Home Stays',
       'icon': Icons.house,
-      'type': 'Home Stays',
+      'type': 'Home Stay',
       'color': [Color(0xFF00695C), Color(0xFF4DB6AC)]
     },
     {
@@ -67,7 +66,7 @@ class _HomePageState extends State<HomePage> {
       'color': [Color(0xFF880E4F), Color(0xFFF06292)]
     },
     {
-      'title': 'Lodge',
+      'title': 'Lodges',
       'icon': Icons.hotel,
       'type': 'Lodge',
       'color': [Color(0xFF880E4F), Color(0xFFF06292)]
@@ -81,7 +80,7 @@ class _HomePageState extends State<HomePage> {
     {
       'title': 'Party Rooms',
       'icon': Icons.nightlife,
-      'type': 'Party Rooms',
+      'type': 'Party Room',
       'color': [Color(0xFFBF360C), Color(0xFFFFA726)]
     },
     {
@@ -99,7 +98,7 @@ class _HomePageState extends State<HomePage> {
     {
       'title': 'Others',
       'icon': Icons.business,
-      'type': 'Others',
+      'type': 'Other',
       'color': [Color(0xFF880E4F), Color(0xFFF06292)]
     },
   ];
@@ -109,8 +108,6 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _bannerController = PageController();
     _autoSlideBanners();
-
-    // SAFETY NET: If widget.user is empty (after app kill), get details from the disk
     _initUser();
   }
 
@@ -146,7 +143,6 @@ class _HomePageState extends State<HomePage> {
   void _onNavTap(int index) {
     setState(() => _selectedIndex = index);
     Future.microtask(() {
-      // Changed from normalizedUser to _currentUser to ensure persistence
       if (index == 0) {
         Navigator.pushReplacementNamed(context, '/home', arguments: _currentUser);
       } else if (index == 1) {
@@ -173,23 +169,17 @@ class _HomePageState extends State<HomePage> {
 
   Future<List<dynamic>> _fetchHotels({String? type}) async {
     setState(() => _isLoading = true);
-
     try {
       final uri = Uri.parse('${ApiConfig.baseUrl}/registerlogin').replace(queryParameters: {
         if (type != null && type.isNotEmpty) 'type': type,
       });
-
       final response = await http.get(uri);
-
       if (response.statusCode == 200) {
-        final List<dynamic> hotels = json.decode(response.body);
-        return hotels;
+        return json.decode(response.body);
       } else {
-        print("Error: ${response.statusCode} - ${response.body}");
         return [];
       }
     } catch (e) {
-      print("Error fetching hotels: $e");
       return [];
     } finally {
       setState(() => _isLoading = false);
@@ -265,7 +255,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _searchController.dispose();
-    _bannerController.dispose(); // Added to prevent memory leaks
+    _bannerController.dispose();
     super.dispose();
   }
 
@@ -293,8 +283,19 @@ class _HomePageState extends State<HomePage> {
         ),
         textInputAction: TextInputAction.search,
         onSubmitted: (query) {
-          String trimmedQuery = query.trim();
-          if (trimmedQuery.isEmpty) return;
+          String raw = query.trim();
+          if (raw.isEmpty) return;
+
+          // NORMALIZATION MAP: Fixes the search issue where "hotels" returns nothing
+          // It forces the search term to match your backend 'type' values.
+          String normalizedType = raw;
+          String check = raw.toLowerCase();
+
+          if (check == "hotels" || check == "hotel") normalizedType = "Hotel";
+          else if (check == "resorts" || check == "resort") normalizedType = "Resort";
+          else if (check == "villas" || check == "villa") normalizedType = "Villa";
+          else if (check == "farm house" || check == "farm stays" || check == "farm stay") normalizedType = "Farm House";
+          else if (check == "dormitories" || check == "dormitory") normalizedType = "Dormitory";
 
           _searchController.clear();
 
@@ -302,8 +303,8 @@ class _HomePageState extends State<HomePage> {
             context,
             '/hotels',
             arguments: {
-              'user': _currentUser, // Using persisted user
-              'query': trimmedQuery,
+              'user': _currentUser,
+              'type': normalizedType,
             },
           );
         },
@@ -354,8 +355,7 @@ class _HomePageState extends State<HomePage> {
                         left: 16,
                         bottom: 70,
                         right: 16,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Column( crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               item['title'] ?? '',
@@ -500,14 +500,14 @@ class _HomePageState extends State<HomePage> {
                           icon: item['icon'],
                           gradientColors: item['color'],
                           onTap: () {
+                            // Logic fix: sending the clean 'type' from your list
+                            // ensures no extra 's' is appended unless intended by the list.
                             final type = item['type'] as String;
                             Navigator.pushNamed(
                               context,
                               '/hotels',
                               arguments: {'user': _currentUser, 'type': type},
                             );
-
-                            _fetchHotels(type: type).then((_) {}).catchError((_) {});
                           },
                         );
                       },

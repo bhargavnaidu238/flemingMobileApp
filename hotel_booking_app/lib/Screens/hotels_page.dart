@@ -194,8 +194,8 @@ class _HotelsPageState extends State<HotelsPage>
     copyIfMissing(['Country', 'country'], 'Country');
     copyIfMissing(['Pincode', 'pincode'], 'Pincode');
     copyIfMissing(['Address', 'address'], 'Address');
-    copyIfMissing(['Rating', 'rating', 'avg_rating'], 'Rating'); // Updated for ratings
-    copyIfMissing(['total_reviews', 'Total_Reviews'], 'total_reviews'); // Ensure review count key
+    copyIfMissing(['Rating', 'rating', 'avg_rating'], 'Rating');
+    copyIfMissing(['total_reviews', 'Total_Reviews'], 'total_reviews');
     copyIfMissing(['Hotel_Images', 'hotel_images'], 'Hotel_Images');
     copyIfMissing(['Amenities', 'amenities'], 'Amenities');
 
@@ -461,7 +461,6 @@ class _HotelsPageState extends State<HotelsPage>
                         final hotelCity = (hotel['City'] ?? '').toString();
                         final hotelAddress = (hotel['Address'] ?? '').toString();
 
-                        // PARSE RATINGS
                         final ratingRaw = (hotel['Rating'] ?? '0').toString();
                         final double ratingDouble = double.tryParse(ratingRaw) ?? 0;
                         final int ratingInt = ratingDouble.floor();
@@ -493,24 +492,30 @@ class _HotelsPageState extends State<HotelsPage>
                                     child: images.isNotEmpty
                                         ? SizedBox(
                                       height: 140,
-                                      child: PageView.builder(
-                                        itemCount: images.length,
-                                        itemBuilder: (context, idx) {
-                                          return Image.network(
-                                            images[idx],
-                                            width: double.infinity,
-                                            height: 140,
-                                            fit: BoxFit.cover,
-                                            loadingBuilder: (ctx, child, progress) => progress == null ? child : Container(height: 140, color: Colors.grey.shade100, child: const Center(child: CircularProgressIndicator())),
-                                            errorBuilder: (ctx, err, st) => Container(height: 140, color: Colors.grey.shade200, child: const Center(child: Icon(Icons.broken_image))),
-                                          );
-                                        },
+                                      child: GestureDetector(
+                                        // Stop the card tap from intercepting horizontal drags
+                                        onTap: () {},
+                                        child: PageView.builder(
+                                          // Important: use a unique controller or default settings
+                                          // to ensure horizontal physics take priority
+                                          physics: const ClampingScrollPhysics(),
+                                          itemCount: images.length,
+                                          itemBuilder: (context, idx) {
+                                            return Image.network(
+                                              images[idx],
+                                              width: double.infinity,
+                                              height: 140,
+                                              fit: BoxFit.cover,
+                                              loadingBuilder: (ctx, child, progress) => progress == null ? child : Container(height: 140, color: Colors.grey.shade100, child: const Center(child: CircularProgressIndicator())),
+                                              errorBuilder: (ctx, err, st) => Container(height: 140, color: Colors.grey.shade200, child: const Center(child: Icon(Icons.broken_image))),
+                                            );
+                                          },
+                                        ),
                                       ),
                                     )
                                         : Container(height: 140, color: Colors.green.shade50, child: const Center(child: Icon(Icons.photo, size: 40))),
                                   ),
                                   const SizedBox(height: 8),
-                                  // ROW FOR HOTEL NAME AND RATING
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
