@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show cos, sqrt, asin;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -8,13 +9,24 @@ import 'app_filters.dart' as app_filters;
 import 'package:hotel_booking_app/services/api_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:url_launcher/url_launcher.dart'; // Added for Map Navigation
 
 class HotelsPage extends StatefulWidget {
   final Map<String, dynamic> user;
   final String type;
+  // Added optional parameters to receive location from Home for persistence
+  final String? initialCity;
+  final double? initialLat;
+  final double? initialLng;
 
-  const HotelsPage({required this.user, required this.type, Key? key})
-      : super(key: key);
+  const HotelsPage({
+    required this.user,
+    required this.type,
+    this.initialCity,
+    this.initialLat,
+    this.initialLng,
+    Key? key
+  }) : super(key: key);
 
   @override
   State<HotelsPage> createState() => _HotelsPageState();
@@ -30,6 +42,8 @@ class _HotelsPageState extends State<HotelsPage>
   int _selectedIndex = 0;
 
   String deviceLocationDisplay = 'Detecting location...';
+  double? userLat;
+  double? userLng;
   bool isManualInput = false;
   Map<String, dynamic> currentFilters = {};
   Timer? _debounce;
@@ -46,8 +60,17 @@ class _HotelsPageState extends State<HotelsPage>
     _animation = Tween<double>(begin: 0.7, end: 1.0).animate(
         CurvedAnimation(parent: _animationController, curve: Curves.easeInOut));
 
-    fetchHotelData();
-    _initDeviceLocation();
+    // Fix 1: Check if location is already provided to avoid re-fetching/resetting
+    if (widget.initialCity != null) {
+      deviceLocationDisplay = widget.initialCity!;
+      userLat = widget.initialLat;
+      userLng = widget.initialLng;
+      isManualInput = true;
+      fetchHotelData(city: widget.initialCity);
+    } else {
+      fetchHotelData();
+      _initDeviceLocation();
+    }
   }
 
   Future<void> _initDeviceLocation() async {
@@ -76,6 +99,9 @@ class _HotelsPageState extends State<HotelsPage>
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 10),
       );
+
+      userLat = position.latitude;
+      userLng = position.longitude;
 
       List<Placemark> placemarks = await placemarkFromCoordinates(
           position.latitude,
@@ -108,12 +134,6 @@ class _HotelsPageState extends State<HotelsPage>
     }
   }
 
-  void onManualLocationInput(String input) {
-    isManualInput = true;
-    setState(() => deviceLocationDisplay = input);
-    fetchHotelData(city: input);
-  }
-
   @override
   void dispose() {
     _animationController.dispose();
@@ -123,41 +143,32 @@ class _HotelsPageState extends State<HotelsPage>
   }
 
   Future<void> fetchHotelData({String? city}) async {
+    if (!mounted) return;
     setState(() {
       isLoading = true;
       errorMessage = null;
     });
 
     try {
-      final uri = Uri.parse(
-          '${ApiConfig.baseUrl}/hotels?type=${Uri.encodeComponent(widget.type)}${city != null ? "&city=${Uri.encodeComponent(city)}" : ""}');
-      final response = await http.get(uri);
+      // Logic fix: using unified app_filters to fetch data
+      final results = await app_filters.fetchHotelsWithFilters(
+        type: widget.type,
+        lat: userLat,
+        lng: userLng,
+        city: city ?? (isManualInput ? deviceLocationDisplay : null),
+        search: searchController.text.trim(),
+        filters: currentFilters,
+      );
 
-      if (response.statusCode == 200) {
-        final decoded = json.decode(response.body);
-        if (decoded is List) {
-          List<Map<String, dynamic>> normalized = decoded
-              .map<Map<String, dynamic>>((e) =>
-          e is Map<String, dynamic> ? e : Map<String, dynamic>.from(e))
-              .toList();
+      if (results is List) {
+        List<Map<String, dynamic>> normalized = results
+            .map<Map<String, dynamic>>((e) => e is Map<String, dynamic> ? e : Map<String, dynamic>.from(e))
+            .map((hotel) => _ensureKeys(hotel))
+            .toList();
 
-          normalized = normalized.map((hotel) => _ensureKeys(hotel)).toList();
-
-          setState(() {
-            hotels = normalized;
-            filteredHotels = normalized;
-            isLoading = false;
-          });
-        } else {
-          setState(() {
-            errorMessage = "Unexpected data format from server.";
-            isLoading = false;
-          });
-        }
-      } else {
         setState(() {
-          errorMessage =
-          'Failed to load ${widget.type}s: ${response.statusCode}';
+          hotels = normalized;
+          filteredHotels = normalized;
           isLoading = false;
         });
       }
@@ -172,11 +183,6 @@ class _HotelsPageState extends State<HotelsPage>
   Map<String, dynamic> _ensureKeys(Map<String, dynamic> src) {
     final Map<String, dynamic> out = Map<String, dynamic>.from(src);
 
-    src.forEach((k, v) {
-      final camel = _toCamelCase(k);
-      out[camel] = out[camel] ?? v;
-    });
-
     void copyIfMissing(List<String> possible, String target) {
       for (var p in possible) {
         if (out.containsKey(p) && (out[target] == null || out[target].toString().isEmpty)) {
@@ -186,170 +192,67 @@ class _HotelsPageState extends State<HotelsPage>
       }
     }
 
-    copyIfMissing(['Hotel_Name', 'hotel_name'], 'Hotel_Name');
-    copyIfMissing(['Room_Type', 'room_type'], 'Room_Type');
-    copyIfMissing(['Room_Price', 'room_price'], 'Room_Price');
-    copyIfMissing(['City', 'city'], 'City');
-    copyIfMissing(['State', 'state'], 'State');
-    copyIfMissing(['Country', 'country'], 'Country');
-    copyIfMissing(['Pincode', 'pincode'], 'Pincode');
-    copyIfMissing(['Address', 'address'], 'Address');
-    copyIfMissing(['Rating', 'rating', 'avg_rating'], 'Rating');
-    copyIfMissing(['total_reviews', 'Total_Reviews'], 'total_reviews');
-    copyIfMissing(['Hotel_Images', 'hotel_images'], 'Hotel_Images');
-    copyIfMissing(['Amenities', 'amenities'], 'Amenities');
+    copyIfMissing(['hotel_name', 'Hotel_Name'], 'Hotel_Name');
+    copyIfMissing(['room_price', 'Room_Price'], 'Room_Price');
+    copyIfMissing(['city', 'City'], 'City');
+    copyIfMissing(['address', 'Address'], 'Address');
+    copyIfMissing(['avg_rating', 'rating', 'Rating'], 'Rating');
+    copyIfMissing(['hotel_images', 'Hotel_Images'], 'Hotel_Images');
+    copyIfMissing(['amenities', 'Amenities'], 'Amenities');
 
     final rawImgs = out['Hotel_Images'];
     List<String> imgs = [];
-
     if (rawImgs != null) {
-      if (rawImgs is List) {
-        imgs = rawImgs.map((e) => e.toString().trim()).toList();
-      } else {
-        final s = rawImgs.toString().trim();
-        imgs = s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-      }
+      if (rawImgs is List) imgs = rawImgs.map((e) => e.toString().trim()).toList();
+      else imgs = rawImgs.toString().split(',').map((e) => e.trim()).toList();
     }
-
     final fixed = imgs.map((e) {
-      String link = e;
-      if (link.contains("localhost")) {
-        link = link.replaceAll("localhost", "10.0.2.2");
-      }
-      if (link.toLowerCase().startsWith("http://") || link.toLowerCase().startsWith("https://")) {
-        return link;
-      }
-      return "${ApiConfig.baseUrl}/hotel_images/$link";
+      if (e.startsWith("http")) return e;
+      return "${ApiConfig.baseUrl}/hotel_images/${e.replaceAll("localhost", "10.0.2.2")}";
     }).toList();
-
     out['Hotel_Images'] = fixed.join(',');
 
     return out;
   }
 
-  String _toCamelCase(String s) {
-    if (s.isEmpty) return s;
-    final nonAlpha = s.replaceAll(RegExp(r'[^A-Za-z0-9]+'), ' ');
-    final parts = nonAlpha.split(' ').where((p) => p.isNotEmpty).toList();
-    if (parts.isEmpty) return s;
-    final first = parts.first.toLowerCase();
-    final rest = parts.skip(1).map((p) => p[0].toUpperCase() + p.substring(1).toLowerCase()).join();
-    return first + rest;
+  double _calculateDistance(double? lat2, double? lon2) {
+    if (userLat == null || userLng == null || lat2 == null || lon2 == null) return 0.0;
+    const p = 0.017453292519943295;
+    final a = 0.5 - cos((lat2 - userLat!) * p) / 2 +
+        cos(userLat! * p) * cos(lat2 * p) *
+            (1 - cos((lon2 - userLng!) * p)) / 2;
+    return 12742 * asin(sqrt(a));
   }
 
-  void filterHotelsLocal(String query) {
-    if (query.trim().isEmpty) {
-      setState(() => filteredHotels = hotels);
-      return;
+  Future<void> _openMap(double? lat, double? lng) async {
+    if (lat == null || lng == null) return;
+    final url = Uri.parse("google.navigation:q=$lat,$lng");
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
     }
-    final q = query.toLowerCase();
-    final results = hotels.where((hotel) {
-      final name = (hotel['Hotel_Name'] ?? '').toString().toLowerCase();
-      final city = (hotel['City'] ?? '').toString().toLowerCase();
-      final desc = (hotel['about_this_property'] ?? '').toString().toLowerCase();
-      return name.contains(q) || city.contains(q) || desc.contains(q);
-    }).toList();
-    setState(() => filteredHotels = results);
   }
 
   void onSearchChanged(String value) {
-    filterHotelsLocal(value);
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 450), () async {
-      final q = value.trim();
-      if (q.isEmpty) {
-        setState(() => filteredHotels = hotels);
-        return;
-      }
-      try {
-        final isLikelyCity = _looksLikeCity(q);
-        final remoteResult = await app_filters.remoteSearchHotels(q,
-            city: isLikelyCity ? q : null, filters: currentFilters);
-        if (remoteResult is List && remoteResult.isNotEmpty) {
-          final normalized = remoteResult
-              .map<Map<String, dynamic>>((e) =>
-          e is Map<String, dynamic> ? e : Map<String, dynamic>.from(e))
-              .map((hotel) => _ensureKeys(hotel))
-              .toList();
-          setState(() => filteredHotels = normalized);
-        }
-      } catch (e) {}
-    });
-  }
-
-  bool _looksLikeCity(String q) {
-    final lowers = q.trim().toLowerCase();
-    if (lowers.contains('street') || lowers.contains(RegExp(r'\d'))) return false;
-    final parts = lowers.split(' ');
-    return parts.length <= 3;
+    _debounce = Timer(const Duration(milliseconds: 600), () => fetchHotelData());
   }
 
   void _onNavTap(int index) {
     setState(() => _selectedIndex = index);
-    Future.microtask(() {
-      if (index == 0) Navigator.pushReplacementNamed(context, '/home', arguments: widget.user);
-      else if (index == 1) Navigator.pushNamed(context, '/history', arguments: widget.user);
-      else if (index == 2) Navigator.pushNamed(context, '/profile', arguments: widget.user);
-    });
+    if (index == 0) Navigator.pushReplacementNamed(context, '/home', arguments: widget.user);
+    else if (index == 1) Navigator.pushNamed(context, '/history', arguments: widget.user);
+    else if (index == 2) Navigator.pushNamed(context, '/profile', arguments: widget.user);
   }
 
   Future<void> _onTapLocation() async {
-    try {
-      final selected = await app_filters.openLocationSelector(context);
-      if (selected != null && selected is String && selected.trim().isNotEmpty) {
-        setState(() => deviceLocationDisplay = selected);
-        await fetchHotelData(city: selected);
-      }
-    } catch (e) {}
-  }
-
-  Future<void> _onTapFilters() async {
-    try {
-      final updatedFilters = await app_filters.openFilterSheet(context, currentFilters);
-      if (updatedFilters == null) return;
-      if (updatedFilters.isEmpty) {
-        setState(() { currentFilters = {}; searchController.clear(); });
-        await fetchHotelData();
-        return;
-      }
-      setState(() => currentFilters = Map<String, dynamic>.from(updatedFilters));
-      if (currentFilters.containsKey('city') && currentFilters['city'] != null && currentFilters['city'].toString().trim().isNotEmpty) {
-        await fetchHotelData(city: currentFilters['city']?.toString());
-      } else {
-        final results = await app_filters.fetchHotelsWithFilters(currentFilters, widget.type);
-        if (results is List) {
-          final normalized = results.map<Map<String, dynamic>>((e) => e is Map<String, dynamic> ? e : Map<String, dynamic>.from(e)).map((hotel) => _ensureKeys(hotel)).toList();
-          setState(() { filteredHotels = normalized; hotels = normalized; });
-        } else {
-          _applyLocalFilterFallback();
-        }
-      }
-    } catch (e) {}
-  }
-
-  Future<void> _clearFiltersDirectly() async {
-    setState(() { currentFilters = {}; searchController.clear(); });
-    await fetchHotelData();
-  }
-
-  void _applyLocalFilterFallback() {
-    final minPrice = (currentFilters['minPrice'] ?? 0) as num;
-    final maxPrice = (currentFilters['maxPrice'] ?? double.infinity) as num;
-    final minRating = (currentFilters['rating'] ?? currentFilters['minRating'] ?? 0) as num;
-
-    final results = hotels.where((hotel) {
-      final rawPrice = (hotel['Room_Price'] ?? hotel['room_price'] ?? '').toString();
-      num price = 0;
-      try {
-        final matches = RegExp(r'\d+').allMatches(rawPrice);
-        final parsed = matches.map((m) => num.tryParse(m.group(0)!) ?? 0).where((v) => v > 0).toList();
-        price = parsed.isEmpty ? 0 : parsed.reduce((a, b) => a < b ? a : b);
-      } catch (_) { price = 0; }
-      final ratingRaw = (hotel['Rating'] ?? '0').toString();
-      final rating = double.tryParse(ratingRaw) ?? 0;
-      return price >= minPrice && price <= maxPrice && rating >= minRating;
-    }).toList();
-    setState(() => filteredHotels = results);
+    final selected = await app_filters.openLocationSelector(context);
+    if (selected != null && selected.isNotEmpty) {
+      isManualInput = true;
+      userLat = null;
+      userLng = null;
+      setState(() => deviceLocationDisplay = selected);
+      fetchHotelData(city: selected);
+    }
   }
 
   @override
@@ -398,7 +301,13 @@ class _HotelsPageState extends State<HotelsPage>
                 child: Row(
                   children: [
                     GestureDetector(
-                      onTap: _onTapFilters,
+                      onTap: () async {
+                        final updated = await app_filters.openFilterSheet(context, currentFilters);
+                        if (updated != null) {
+                          setState(() => currentFilters = updated);
+                          fetchHotelData();
+                        }
+                      },
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)]),
@@ -406,16 +315,6 @@ class _HotelsPageState extends State<HotelsPage>
                       ),
                     ),
                     const SizedBox(width: 8),
-                    if (currentFilters.isNotEmpty)
-                      GestureDetector(
-                        onTap: _clearFiltersDirectly,
-                        child: Container(
-                          margin: const EdgeInsets.only(right: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)]),
-                          child: const Text("Clear", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.green)),
-                        ),
-                      ),
                     Expanded(
                       child: TextField(
                         controller: searchController,
@@ -437,143 +336,17 @@ class _HotelsPageState extends State<HotelsPage>
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: fetchHotelData,
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 400),
-                    child: isLoading
-                        ? const Center(child: CircularProgressIndicator(color: Colors.green))
-                        : (errorMessage != null)
-                        ? Center(child: Text(errorMessage!, style: const TextStyle(fontSize: 16, color: Colors.red), textAlign: TextAlign.center))
-                        : filteredHotels.isEmpty
-                        ? const Center(child: Text("No hotels found."))
-                        : ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: filteredHotels.length,
-                      itemBuilder: (context, index) {
-                        final hotel = filteredHotels[index];
-
-                        List<String> images = [];
-                        if (hotel['Hotel_Images'] != null && hotel['Hotel_Images'].toString().isNotEmpty) {
-                          images = hotel['Hotel_Images'].toString().split(',');
-                        }
-
-                        final hotelName = (hotel['Hotel_Name'] ?? 'Unknown Hotel').toString();
-                        final hotelCity = (hotel['City'] ?? '').toString();
-                        final hotelAddress = (hotel['Address'] ?? '').toString();
-
-                        final ratingRaw = (hotel['Rating'] ?? '0').toString();
-                        final double ratingDouble = double.tryParse(ratingRaw) ?? 0;
-                        final int ratingInt = ratingDouble.floor();
-                        final int totalReviews = int.tryParse((hotel['total_reviews'] ?? '0').toString()) ?? 0;
-
-                        String minDisplayPrice;
-                        try {
-                          final matches = RegExp(r'\d+').allMatches((hotel['Room_Price'] ?? '').toString());
-                          final parsed = matches.map((m) => num.tryParse(m.group(0)!) ?? 0).where((v) => v > 0).toList();
-                          minDisplayPrice = parsed.isEmpty ? '' : parsed.reduce((a, b) => a < b ? a : b).toString();
-                        } catch (_) { minDisplayPrice = ''; }
-
-                        final amenities = (hotel['Amenities'] ?? '').toString().split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-
-                        return GestureDetector(
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => HotelDetailsPage(hotel: hotel, user: widget.user))),
-                          child: Card(
-                            color: const Color(0xFFF0FFF0),
-                            margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                            elevation: 6,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            child: Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: images.isNotEmpty
-                                        ? SizedBox(
-                                      height: 140,
-                                      child: GestureDetector(
-                                        // Stop the card tap from intercepting horizontal drags
-                                        onTap: () {},
-                                        child: PageView.builder(
-                                          // Important: use a unique controller or default settings
-                                          // to ensure horizontal physics take priority
-                                          physics: const ClampingScrollPhysics(),
-                                          itemCount: images.length,
-                                          itemBuilder: (context, idx) {
-                                            return Image.network(
-                                              images[idx],
-                                              width: double.infinity,
-                                              height: 140,
-                                              fit: BoxFit.cover,
-                                              loadingBuilder: (ctx, child, progress) => progress == null ? child : Container(height: 140, color: Colors.grey.shade100, child: const Center(child: CircularProgressIndicator())),
-                                              errorBuilder: (ctx, err, st) => Container(height: 140, color: Colors.grey.shade200, child: const Center(child: Icon(Icons.broken_image))),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    )
-                                        : Container(height: 140, color: Colors.green.shade50, child: const Center(child: Icon(Icons.photo, size: 40))),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: Text(hotelName,
-                                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      Row(
-                                        children: [
-                                          Row(
-                                            children: List.generate(5, (i) {
-                                              if (i < ratingInt) return const Icon(Icons.star, size: 16, color: Colors.orange);
-                                              return const Icon(Icons.star_border, size: 16, color: Colors.orange);
-                                            }),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text("($totalReviews)", style: const TextStyle(fontSize: 12, color: Colors.black54)),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.location_on, size: 14, color: Colors.green),
-                                      const SizedBox(width: 4),
-                                      Expanded(child: Text("$hotelAddress, $hotelCity", style: const TextStyle(fontSize: 12, color: Colors.black54), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  SizedBox(
-                                    height: 30,
-                                    child: ListView(
-                                      scrollDirection: Axis.horizontal,
-                                      children: amenities.take(5).map((a) => Container(
-                                        margin: const EdgeInsets.only(right: 6),
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
-                                        child: Center(child: Text(a, style: const TextStyle(fontSize: 10))),
-                                      )).toList(),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(gradient: const LinearGradient(colors: [Colors.green, Colors.lightGreen]), borderRadius: BorderRadius.circular(8)),
-                                    child: Text("Starts from ₹${minDisplayPrice.isEmpty ? 'N/A' : minDisplayPrice} / night", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                  child: isLoading
+                      ? const Center(child: CircularProgressIndicator(color: Colors.green))
+                      : filteredHotels.isEmpty
+                      ? const Center(child: Text("No results found."))
+                      : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: filteredHotels.length,
+                    itemBuilder: (context, index) {
+                      return _buildOriginalHotelCard(filteredHotels[index]);
+                    },
                   ),
                 ),
               ),
@@ -594,13 +367,135 @@ class _HotelsPageState extends State<HotelsPage>
     );
   }
 
-  Icon _getAmenityIcon(String amenity) {
+  Widget _buildOriginalHotelCard(Map<String, dynamic> hotel) {
+    List<String> images = (hotel['Hotel_Images'] ?? '').toString().split(',');
+    final hotelName = (hotel['Hotel_Name'] ?? 'Unknown').toString();
+    final hotelCity = (hotel['City'] ?? '').toString();
+    final hotelAddress = (hotel['Address'] ?? '').toString();
+    final hotelState = (hotel['state'] ?? '').toString();
+    final hotelPin = (hotel['pincode'] ?? '').toString();
+
+    // Fix: Full Address Display
+    String fullDisplayAddress = "$hotelAddress, $hotelCity, $hotelState - $hotelPin";
+
+    final hLat = double.tryParse(hotel['latitude']?.toString() ?? '');
+    final hLng = double.tryParse(hotel['longitude']?.toString() ?? '');
+    double dist = _calculateDistance(hLat, hLng);
+
+    final ratingRaw = (hotel['Rating'] ?? '0').toString();
+    final double ratingDouble = double.tryParse(ratingRaw) ?? 0;
+    final int ratingInt = ratingDouble.floor();
+    final int totalReviews = int.tryParse((hotel['total_reviews'] ?? '0').toString()) ?? 0;
+
+    String price = 'N/A';
+    try {
+      final matches = RegExp(r'\d+').allMatches((hotel['Room_Price'] ?? '').toString());
+      if(matches.isNotEmpty) price = matches.first.group(0).toString();
+    } catch (_) {}
+
+    final amenities = (hotel['Amenities'] ?? '').toString().split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => HotelDetailsPage(hotel: hotel, user: widget.user))),
+      child: Card(
+        color: const Color(0xFFF0FFF0),
+        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        elevation: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: images.isNotEmpty && images[0].isNotEmpty
+                    ? SizedBox(
+                  height: 140,
+                  child: PageView.builder(
+                    physics: const ClampingScrollPhysics(),
+                    itemCount: images.length,
+                    itemBuilder: (context, idx) {
+                      return Image.network(images[idx], width: double.infinity, height: 140, fit: BoxFit.cover,
+                        errorBuilder: (ctx, err, st) => Container(color: Colors.grey.shade200, child: const Center(child: Icon(Icons.broken_image))),
+                      );
+                    },
+                  ),
+                )
+                    : Container(height: 140, color: Colors.green.shade50, child: const Center(child: Icon(Icons.photo, size: 40))),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(child: Text(hotelName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  Row(
+                    children: [
+                      Row(children: List.generate(5, (i) => Icon(i < ratingInt ? Icons.star : Icons.star_border, size: 16, color: Colors.orange))),
+                      const SizedBox(width: 4),
+                      Text("($totalReviews)", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  GestureDetector(
+                      onTap: () => _openMap(hLat, hLng),
+                      child: const Icon(Icons.location_on, size: 16, color: Colors.green)
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                      child: Text(fullDisplayAddress, style: const TextStyle(fontSize: 11, color: Colors.black54), maxLines: 2, overflow: TextOverflow.ellipsis)
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              if (dist > 0)
+                Text("${dist.toStringAsFixed(1)} km away", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green)),
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 30,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: amenities.take(5).map((a) => Container(
+                    margin: const EdgeInsets.only(right: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
+                    child: Row(
+                      children: [
+                        _getAmenityIcon(a),
+                        const SizedBox(width: 4),
+                        Text(a, style: const TextStyle(fontSize: 10)),
+                      ],
+                    ),
+                  )).toList(),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(gradient: const LinearGradient(colors: [Colors.green, Colors.lightGreen]), borderRadius: BorderRadius.circular(8)),
+                child: Text("Starts from ₹$price / night", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _getAmenityIcon(String amenity) {
     final lower = amenity.toLowerCase();
-    if (lower.contains('wifi')) return const Icon(Icons.wifi, size: 14);
-    if (lower.contains('pool')) return const Icon(Icons.pool, size: 14);
-    if (lower.contains('gym')) return const Icon(Icons.fitness_center, size: 14);
-    if (lower.contains('parking')) return const Icon(Icons.local_parking, size: 14);
-    if (lower.contains('restaurant')) return const Icon(Icons.restaurant, size: 14);
-    return const Icon(Icons.check_circle_outline, size: 14);
+    if (lower.contains('wifi')) return const Icon(Icons.wifi, size: 12, color: Colors.green);
+    if (lower.contains('ac') || lower.contains('air conditioning')) return const Icon(Icons.ac_unit, size: 12, color: Colors.green);
+    if (lower.contains('tv')) return const Icon(Icons.tv, size: 12, color: Colors.green);
+    if (lower.contains('parking')) return const Icon(Icons.local_parking, size: 12, color: Colors.green);
+    if (lower.contains('pool')) return const Icon(Icons.pool, size: 12, color: Colors.green);
+    if (lower.contains('restaurant') || lower.contains('food')) return const Icon(Icons.restaurant, size: 12, color: Colors.green);
+    return const Icon(Icons.check_circle_outline, size: 12, color: Colors.green);
   }
 }

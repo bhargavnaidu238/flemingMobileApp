@@ -8,8 +8,7 @@ class ApiConfig {
   static const String _localWeb = 'http://localhost:8080';
   static const String _localAndroid = 'http://10.0.2.2:8080';
   static const String _altLocal = 'http://127.0.0.1:8000';
-  static const String _production =
-      'https://test-host-server-tamg.onrender.com';
+  static const String _production = 'https://test-hosting-server.onrender.com';
 
   static const String _razorpayTestKey = 'rzp_test_RyBLHvNxl52vtv';
   static const String _razorpayLiveKey = 'rzp_live_xxxxxxxx';
@@ -34,22 +33,22 @@ class ApiService {
   static const String _tokenKey = "auth_token";
   static const String _emailKey = "auth_email";
   static const String _userIdKey = "auth_userId";
-  static const String _userNameKey = "auth_userName"; // Added
-  static const String _userMobileKey = "auth_userMobile"; // Added
+  static const String _userNameKey = "auth_userName";
+  static const String _userMobileKey = "auth_userMobile";
 
   static String? _cachedToken;
   static String? _cachedEmail;
   static String? _cachedUserId;
-  static String? _cachedUserName; // Added
-  static String? _cachedUserMobile; // Added
+  static String? _cachedUserName;
+  static String? _cachedUserMobile;
 
   static Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _cachedToken = prefs.getString(_tokenKey);
     _cachedEmail = prefs.getString(_emailKey);
     _cachedUserId = prefs.getString(_userIdKey);
-    _cachedUserName = prefs.getString(_userNameKey); // Added
-    _cachedUserMobile = prefs.getString(_userMobileKey); // Added
+    _cachedUserName = prefs.getString(_userNameKey);
+    _cachedUserMobile = prefs.getString(_userMobileKey);
     debugPrint("ApiService: Data loaded. LoggedIn: ${isLoggedIn()}");
   }
 
@@ -57,8 +56,8 @@ class ApiService {
     required String token,
     required String email,
     required String userId,
-    String? name, // Added optional param
-    String? mobile, // Added optional param
+    String? name,
+    String? mobile,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, token);
@@ -78,8 +77,8 @@ class ApiService {
   static String? getToken() => _cachedToken;
   static String? getEmail() => _cachedEmail;
   static String? getUserId() => _cachedUserId;
-  static String? getUserName() => _cachedUserName; // Added getter
-  static String? getUserMobile() => _cachedUserMobile; // Added getter
+  static String? getUserName() => _cachedUserName;
+  static String? getUserMobile() => _cachedUserMobile;
 
   static bool isLoggedIn() => _cachedToken != null && _cachedToken!.isNotEmpty;
 
@@ -88,8 +87,8 @@ class ApiService {
     await prefs.remove(_tokenKey);
     await prefs.remove(_emailKey);
     await prefs.remove(_userIdKey);
-    await prefs.remove(_userNameKey); // Added
-    await prefs.remove(_userMobileKey); // Added
+    await prefs.remove(_userNameKey);
+    await prefs.remove(_userMobileKey);
 
     _cachedToken = null;
     _cachedEmail = null;
@@ -339,7 +338,6 @@ class ProfileApiService {
       if (response.statusCode == 200 && response.body.isNotEmpty) {
         final data = jsonDecode(response.body);
 
-        // AUTO-UPDATE CACHE ON FETCH
         final firstName = data['firstName'] ?? '';
         final lastName = data['lastName'] ?? '';
         await ApiService.saveAuthData(
@@ -389,7 +387,6 @@ class ProfileApiService {
       );
 
       if(response.statusCode == 200) {
-        // UPDATE CACHE LOCALLY AFTER SUCCESSFUL SAVE
         await ApiService.saveAuthData(
           token: ApiService.getToken() ?? '',
           email: email,

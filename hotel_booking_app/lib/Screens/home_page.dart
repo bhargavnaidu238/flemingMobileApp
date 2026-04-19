@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:hotel_booking_app/services/api_service.dart';
+import 'package:geolocator/geolocator.dart'; // Added for GPS detection
+import 'app_filters.dart' as app_filters; // Added for location helpers
 
 class HomePage extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -19,6 +21,11 @@ class _HomePageState extends State<HomePage> {
   final double _bannerHeight = 190;
 
   bool _isLoading = false;
+
+  // Persistent Location Variables
+  String currentCity = "Detecting...";
+  double? userLat;
+  double? userLng;
 
   late Map<String, dynamic> _currentUser;
 
@@ -109,6 +116,26 @@ class _HomePageState extends State<HomePage> {
     _bannerController = PageController();
     _autoSlideBanners();
     _initUser();
+    _initLocation(); // Automatically detect location on start
+  }
+
+  // Detect location once on home screen
+  Future<void> _initLocation() async {
+    Position? pos = await app_filters.getCurrentCoordinates();
+    if (pos != null) {
+      String city = await app_filters.getCurrentLocationDisplayName();
+      if (mounted) {
+        setState(() {
+          userLat = pos.latitude;
+          userLng = pos.longitude;
+          currentCity = city;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() => currentCity = "Tap to set location");
+      }
+    }
   }
 
   void _initUser() {
@@ -165,25 +192,6 @@ class _HomePageState extends State<HomePage> {
     }
 
     return normalized;
-  }
-
-  Future<List<dynamic>> _fetchHotels({String? type}) async {
-    setState(() => _isLoading = true);
-    try {
-      final uri = Uri.parse('${ApiConfig.baseUrl}/registerlogin').replace(queryParameters: {
-        if (type != null && type.isNotEmpty) 'type': type,
-      });
-      final response = await http.get(uri);
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      } else {
-        return [];
-      }
-    } catch (e) {
-      return [];
-    } finally {
-      setState(() => _isLoading = false);
-    }
   }
 
   Widget _buildCategoryCard({
@@ -286,8 +294,6 @@ class _HomePageState extends State<HomePage> {
           String raw = query.trim();
           if (raw.isEmpty) return;
 
-          // NORMALIZATION MAP: Fixes the search issue where "hotels" returns nothing
-          // It forces the search term to match your backend 'type' values.
           String normalizedType = raw;
           String check = raw.toLowerCase();
 
@@ -305,6 +311,9 @@ class _HomePageState extends State<HomePage> {
             arguments: {
               'user': _currentUser,
               'type': normalizedType,
+              'initialCity': currentCity == "Detecting..." ? null : currentCity,
+              'initialLat': userLat,
+              'initialLng': userLng,
             },
           );
         },
@@ -416,6 +425,17 @@ class _HomePageState extends State<HomePage> {
         title: const Text("Flamingo AI", style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         backgroundColor: Colors.green[700],
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: Center(
+              child: Text(
+                currentCity == "Detecting..." ? "" : currentCity,
+                style: const TextStyle(fontSize: 12, color: Colors.white),
+              ),
+            ),
+          )
+        ],
         leading: IconButton(
           icon: const Icon(Icons.person),
           onPressed: () {
@@ -477,36 +497,23 @@ class _HomePageState extends State<HomePage> {
                       ),
                       itemBuilder: (context, index) {
                         final item = categories[index];
-
-                        if (item['type'] == 'paying guest') {
-                          return _buildCategoryCard(
-                            title: item['title'],
-                            icon: item['icon'],
-                            gradientColors: item['color'],
-                            onTap: () {
-                              Navigator.pushNamed(
-                                context,
-                                '/paying_guest',
-                                arguments: {
-                                  'user': _currentUser,
-                                },
-                              );
-                            },
-                          );
-                        }
+                        final type = item['type'] as String;
 
                         return _buildCategoryCard(
                           title: item['title'],
                           icon: item['icon'],
                           gradientColors: item['color'],
                           onTap: () {
-                            // Logic fix: sending the clean 'type' from your list
-                            // ensures no extra 's' is appended unless intended by the list.
-                            final type = item['type'] as String;
                             Navigator.pushNamed(
                               context,
-                              '/hotels',
-                              arguments: {'user': _currentUser, 'type': type},
+                              type == 'paying guest' ? '/paying_guest' : '/hotels',
+                              arguments: {
+                                'user': _currentUser,
+                                'type': type,
+                                'initialCity': currentCity == "Detecting..." ? null : currentCity,
+                                'initialLat': userLat,
+                                'initialLng': userLng,
+                              },
                             );
                           },
                         );
