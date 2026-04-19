@@ -34,16 +34,22 @@ class ApiService {
   static const String _tokenKey = "auth_token";
   static const String _emailKey = "auth_email";
   static const String _userIdKey = "auth_userId";
+  static const String _userNameKey = "auth_userName"; // Added
+  static const String _userMobileKey = "auth_userMobile"; // Added
 
   static String? _cachedToken;
   static String? _cachedEmail;
   static String? _cachedUserId;
+  static String? _cachedUserName; // Added
+  static String? _cachedUserMobile; // Added
 
   static Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _cachedToken = prefs.getString(_tokenKey);
     _cachedEmail = prefs.getString(_emailKey);
     _cachedUserId = prefs.getString(_userIdKey);
+    _cachedUserName = prefs.getString(_userNameKey); // Added
+    _cachedUserMobile = prefs.getString(_userMobileKey); // Added
     debugPrint("ApiService: Data loaded. LoggedIn: ${isLoggedIn()}");
   }
 
@@ -51,20 +57,29 @@ class ApiService {
     required String token,
     required String email,
     required String userId,
+    String? name, // Added optional param
+    String? mobile, // Added optional param
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, token);
     await prefs.setString(_emailKey, email);
     await prefs.setString(_userIdKey, userId);
 
+    if (name != null) await prefs.setString(_userNameKey, name);
+    if (mobile != null) await prefs.setString(_userMobileKey, mobile);
+
     _cachedToken = token;
     _cachedEmail = email;
     _cachedUserId = userId;
+    if (name != null) _cachedUserName = name;
+    if (mobile != null) _cachedUserMobile = mobile;
   }
 
   static String? getToken() => _cachedToken;
   static String? getEmail() => _cachedEmail;
   static String? getUserId() => _cachedUserId;
+  static String? getUserName() => _cachedUserName; // Added getter
+  static String? getUserMobile() => _cachedUserMobile; // Added getter
 
   static bool isLoggedIn() => _cachedToken != null && _cachedToken!.isNotEmpty;
 
@@ -73,9 +88,14 @@ class ApiService {
     await prefs.remove(_tokenKey);
     await prefs.remove(_emailKey);
     await prefs.remove(_userIdKey);
+    await prefs.remove(_userNameKey); // Added
+    await prefs.remove(_userMobileKey); // Added
+
     _cachedToken = null;
     _cachedEmail = null;
     _cachedUserId = null;
+    _cachedUserName = null;
+    _cachedUserMobile = null;
     debugPrint("ApiService: User logged out and cache cleared.");
   }
 
@@ -198,11 +218,16 @@ class ApiService {
       if (response.statusCode == 200) {
         final token = data['token'] ?? DateTime.now().millisecondsSinceEpoch.toString();
         final userId = data['userId']?.toString() ?? '';
+        final firstName = data['firstName'] ?? '';
+        final lastName = data['lastName'] ?? '';
+        final mobile = data['mobile'] ?? '';
 
         await saveAuthData(
           token: token,
           email: email,
           userId: userId,
+          name: "$firstName $lastName".trim(),
+          mobile: mobile,
         );
 
         return {
@@ -313,6 +338,18 @@ class ProfileApiService {
       final response = await http.get(url);
       if (response.statusCode == 200 && response.body.isNotEmpty) {
         final data = jsonDecode(response.body);
+
+        // AUTO-UPDATE CACHE ON FETCH
+        final firstName = data['firstName'] ?? '';
+        final lastName = data['lastName'] ?? '';
+        await ApiService.saveAuthData(
+          token: ApiService.getToken() ?? '',
+          email: data['email'] ?? email,
+          userId: data['userId']?.toString() ?? '',
+          name: "$firstName $lastName".trim(),
+          mobile: data['phone'] ?? '',
+        );
+
         return {
           "userId": data['userId']?.toString() ?? '',
           "email": data['email'] ?? email,
@@ -350,6 +387,18 @@ class ProfileApiService {
           "address": address,
         }),
       );
+
+      if(response.statusCode == 200) {
+        // UPDATE CACHE LOCALLY AFTER SUCCESSFUL SAVE
+        await ApiService.saveAuthData(
+          token: ApiService.getToken() ?? '',
+          email: email,
+          userId: userId,
+          name: "$firstName $lastName".trim(),
+          mobile: phone,
+        );
+      }
+
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('UpdateProfile Error: $e');
@@ -378,5 +427,64 @@ class ProfileApiService {
       debugPrint('Deactivate Error: $e');
       return false;
     }
+  }
+}
+
+/// ================= REVIEWS SERVICE =================
+class ReviewApiService {
+  static Future<List<dynamic>> fetchReviews(String hotelId, {int offset = 0, int limit = 10}) async {
+    final url = Uri.parse('${ApiConfig.baseUrl}/reviews?hotel_id=$hotelId&offset=$offset&limit=$limit');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint('FetchReviews Error: $e');
+    }
+    return [];
+  }
+
+  static Future<dynamic> submitReviewWithResponse({
+    required String hotelId,
+    required String userId,
+    required int rating,
+    required String comment,
+  }) async {
+    final url = Uri.parse('${ApiConfig.baseUrl}/reviews');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "hotel_id": hotelId,
+          "user_id": userId,
+          "rating": rating.toString(),
+          "comment": comment,
+        }),
+      );
+
+      if (response.statusCode == 201) return true;
+      if (response.statusCode == 409) return "duplicate";
+      return false;
+    } catch (e) {
+      debugPrint('SubmitReview Error: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> submitReview({
+    required String hotelId,
+    required String userId,
+    required int rating,
+    required String comment,
+  }) async {
+    final result = await submitReviewWithResponse(
+      hotelId: hotelId,
+      userId: userId,
+      rating: rating,
+      comment: comment,
+    );
+    return result == true;
   }
 }

@@ -169,7 +169,6 @@ class _HotelsPageState extends State<HotelsPage>
     }
   }
 
-  // --- ENSURE KEYS (Strictly preserving original data for Room Types/Prices) ---
   Map<String, dynamic> _ensureKeys(Map<String, dynamic> src) {
     final Map<String, dynamic> out = Map<String, dynamic>.from(src);
 
@@ -187,15 +186,16 @@ class _HotelsPageState extends State<HotelsPage>
       }
     }
 
-    copyIfMissing(['Hotel_Name', 'hotel_name', 'hotelName'], 'Hotel_Name');
-    copyIfMissing(['Room_Type', 'room_type', 'roomType'], 'Room_Type');
-    copyIfMissing(['Room_Price', 'room_price', 'roomPrice'], 'Room_Price');
+    copyIfMissing(['Hotel_Name', 'hotel_name'], 'Hotel_Name');
+    copyIfMissing(['Room_Type', 'room_type'], 'Room_Type');
+    copyIfMissing(['Room_Price', 'room_price'], 'Room_Price');
     copyIfMissing(['City', 'city'], 'City');
     copyIfMissing(['State', 'state'], 'State');
     copyIfMissing(['Country', 'country'], 'Country');
     copyIfMissing(['Pincode', 'pincode'], 'Pincode');
     copyIfMissing(['Address', 'address'], 'Address');
-    copyIfMissing(['Rating', 'rating'], 'Rating');
+    copyIfMissing(['Rating', 'rating', 'avg_rating'], 'Rating');
+    copyIfMissing(['total_reviews', 'Total_Reviews'], 'total_reviews');
     copyIfMissing(['Hotel_Images', 'hotel_images'], 'Hotel_Images');
     copyIfMissing(['Amenities', 'amenities'], 'Amenities');
 
@@ -462,8 +462,9 @@ class _HotelsPageState extends State<HotelsPage>
                         final hotelAddress = (hotel['Address'] ?? '').toString();
 
                         final ratingRaw = (hotel['Rating'] ?? '0').toString();
-                        final ratingDouble = double.tryParse(ratingRaw) ?? 0;
-                        final ratingInt = ratingDouble.floor();
+                        final double ratingDouble = double.tryParse(ratingRaw) ?? 0;
+                        final int ratingInt = ratingDouble.floor();
+                        final int totalReviews = int.tryParse((hotel['total_reviews'] ?? '0').toString()) ?? 0;
 
                         String minDisplayPrice;
                         try {
@@ -491,24 +492,54 @@ class _HotelsPageState extends State<HotelsPage>
                                     child: images.isNotEmpty
                                         ? SizedBox(
                                       height: 140,
-                                      child: PageView.builder(
-                                        itemCount: images.length,
-                                        itemBuilder: (context, idx) {
-                                          return Image.network(
-                                            images[idx],
-                                            width: double.infinity,
-                                            height: 140,
-                                            fit: BoxFit.cover,
-                                            loadingBuilder: (ctx, child, progress) => progress == null ? child : Container(height: 140, color: Colors.grey.shade100, child: const Center(child: CircularProgressIndicator())),
-                                            errorBuilder: (ctx, err, st) => Container(height: 140, color: Colors.grey.shade200, child: const Center(child: Icon(Icons.broken_image))),
-                                          );
-                                        },
+                                      child: GestureDetector(
+                                        // Stop the card tap from intercepting horizontal drags
+                                        onTap: () {},
+                                        child: PageView.builder(
+                                          // Important: use a unique controller or default settings
+                                          // to ensure horizontal physics take priority
+                                          physics: const ClampingScrollPhysics(),
+                                          itemCount: images.length,
+                                          itemBuilder: (context, idx) {
+                                            return Image.network(
+                                              images[idx],
+                                              width: double.infinity,
+                                              height: 140,
+                                              fit: BoxFit.cover,
+                                              loadingBuilder: (ctx, child, progress) => progress == null ? child : Container(height: 140, color: Colors.grey.shade100, child: const Center(child: CircularProgressIndicator())),
+                                              errorBuilder: (ctx, err, st) => Container(height: 140, color: Colors.grey.shade200, child: const Center(child: Icon(Icons.broken_image))),
+                                            );
+                                          },
+                                        ),
                                       ),
                                     )
                                         : Container(height: 140, color: Colors.green.shade50, child: const Center(child: Icon(Icons.photo, size: 40))),
                                   ),
                                   const SizedBox(height: 8),
-                                  Text(hotelName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(hotelName,
+                                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Row(
+                                        children: [
+                                          Row(
+                                            children: List.generate(5, (i) {
+                                              if (i < ratingInt) return const Icon(Icons.star, size: 16, color: Colors.orange);
+                                              return const Icon(Icons.star_border, size: 16, color: Colors.orange);
+                                            }),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text("($totalReviews)", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                   const SizedBox(height: 4),
                                   Row(
                                     children: [

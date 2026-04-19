@@ -20,6 +20,8 @@ class _HomePageState extends State<HomePage> {
 
   bool _isLoading = false;
 
+  late Map<String, dynamic> _currentUser;
+
   final List<Map<String, String>> bannerData = [
     {
       'title': 'Luxury Hotels',
@@ -46,7 +48,7 @@ class _HomePageState extends State<HomePage> {
       'color': [Color(0xFF263238), Color(0xFF607D8B)]
     },
     {
-      'title': 'Farm Stays',
+      'title': 'Farm House',
       'icon': Icons.agriculture,
       'type': 'Farm House',
       'color': [Color(0xFF1B5E20), Color(0xFF4CAF50)]
@@ -54,7 +56,7 @@ class _HomePageState extends State<HomePage> {
     {
       'title': 'Home Stays',
       'icon': Icons.house,
-      'type': 'Home Stays',
+      'type': 'Home Stay',
       'color': [Color(0xFF00695C), Color(0xFF4DB6AC)]
     },
     {
@@ -64,7 +66,7 @@ class _HomePageState extends State<HomePage> {
       'color': [Color(0xFF880E4F), Color(0xFFF06292)]
     },
     {
-      'title': 'Lodge',
+      'title': 'Lodges',
       'icon': Icons.hotel,
       'type': 'Lodge',
       'color': [Color(0xFF880E4F), Color(0xFFF06292)]
@@ -78,7 +80,7 @@ class _HomePageState extends State<HomePage> {
     {
       'title': 'Party Rooms',
       'icon': Icons.nightlife,
-      'type': 'Party Rooms',
+      'type': 'Party Room',
       'color': [Color(0xFFBF360C), Color(0xFFFFA726)]
     },
     {
@@ -96,7 +98,7 @@ class _HomePageState extends State<HomePage> {
     {
       'title': 'Others',
       'icon': Icons.business,
-      'type': 'Others',
+      'type': 'Other',
       'color': [Color(0xFF880E4F), Color(0xFFF06292)]
     },
   ];
@@ -106,6 +108,21 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _bannerController = PageController();
     _autoSlideBanners();
+    _initUser();
+  }
+
+  void _initUser() {
+    final normalized = _normalizeUser(widget.user);
+    if (normalized['email'] == null || normalized['email'].isEmpty) {
+      _currentUser = {
+        'userId': ApiService.getUserId() ?? '',
+        'name': ApiService.getUserName() ?? 'User',
+        'email': ApiService.getEmail() ?? '',
+        'mobile': ApiService.getUserMobile() ?? '',
+      };
+    } else {
+      _currentUser = normalized;
+    }
   }
 
   void _autoSlideBanners() {
@@ -126,13 +143,12 @@ class _HomePageState extends State<HomePage> {
   void _onNavTap(int index) {
     setState(() => _selectedIndex = index);
     Future.microtask(() {
-      final normalizedUser = _normalizeUser(widget.user);
       if (index == 0) {
-        Navigator.pushReplacementNamed(context, '/home', arguments: normalizedUser);
+        Navigator.pushReplacementNamed(context, '/home', arguments: _currentUser);
       } else if (index == 1) {
-        Navigator.pushNamed(context, '/history', arguments: normalizedUser);
+        Navigator.pushNamed(context, '/history', arguments: _currentUser);
       } else if (index == 2) {
-        Navigator.pushNamed(context, '/profile', arguments: normalizedUser);
+        Navigator.pushNamed(context, '/profile', arguments: _currentUser);
       }
     });
   }
@@ -153,23 +169,17 @@ class _HomePageState extends State<HomePage> {
 
   Future<List<dynamic>> _fetchHotels({String? type}) async {
     setState(() => _isLoading = true);
-
     try {
       final uri = Uri.parse('${ApiConfig.baseUrl}/registerlogin').replace(queryParameters: {
         if (type != null && type.isNotEmpty) 'type': type,
       });
-
       final response = await http.get(uri);
-
       if (response.statusCode == 200) {
-        final List<dynamic> hotels = json.decode(response.body);
-        return hotels;
+        return json.decode(response.body);
       } else {
-        print("Error: ${response.statusCode} - ${response.body}");
         return [];
       }
     } catch (e) {
-      print("Error fetching hotels: $e");
       return [];
     } finally {
       setState(() => _isLoading = false);
@@ -240,12 +250,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-// Inside your State class:
   final TextEditingController _searchController = TextEditingController();
 
   @override
   void dispose() {
     _searchController.dispose();
+    _bannerController.dispose();
     super.dispose();
   }
 
@@ -264,7 +274,7 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       child: TextField(
-        controller: _searchController, // Attached controller
+        controller: _searchController,
         decoration: const InputDecoration(
           hintText: "Search category (Hotel, Resort) or Name...",
           prefixIcon: Icon(Icons.search),
@@ -273,21 +283,28 @@ class _HomePageState extends State<HomePage> {
         ),
         textInputAction: TextInputAction.search,
         onSubmitted: (query) {
-          String trimmedQuery = query.trim();
-          if (trimmedQuery.isEmpty) return;
+          String raw = query.trim();
+          if (raw.isEmpty) return;
 
-          // 1. Clear the search bar immediately
+          // NORMALIZATION MAP: Fixes the search issue where "hotels" returns nothing
+          // It forces the search term to match your backend 'type' values.
+          String normalizedType = raw;
+          String check = raw.toLowerCase();
+
+          if (check == "hotels" || check == "hotel") normalizedType = "Hotel";
+          else if (check == "resorts" || check == "resort") normalizedType = "Resort";
+          else if (check == "villas" || check == "villa") normalizedType = "Villa";
+          else if (check == "farm house" || check == "farm stays" || check == "farm stay") normalizedType = "Farm House";
+          else if (check == "dormitories" || check == "dormitory") normalizedType = "Dormitory";
+
           _searchController.clear();
 
-          final normalizedUser = _normalizeUser(widget.user);
-
-          // 2. Pass the raw query as 'query'.
           Navigator.pushNamed(
             context,
             '/hotels',
             arguments: {
-              'user': normalizedUser,
-              'query': trimmedQuery,
+              'user': _currentUser,
+              'type': normalizedType,
             },
           );
         },
@@ -338,8 +355,7 @@ class _HomePageState extends State<HomePage> {
                         left: 16,
                         bottom: 70,
                         right: 16,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Column( crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               item['title'] ?? '',
@@ -403,13 +419,12 @@ class _HomePageState extends State<HomePage> {
         leading: IconButton(
           icon: const Icon(Icons.person),
           onPressed: () {
-            final normalizedUser = _normalizeUser(widget.user);
             Navigator.pushNamed(
               context,
               '/profile',
               arguments: {
-                'email': normalizedUser['email'],
-                'userId': normalizedUser['user_id'],
+                'email': _currentUser['email'],
+                'userId': _currentUser['user_id'],
               },
             );
           },
@@ -463,20 +478,17 @@ class _HomePageState extends State<HomePage> {
                       itemBuilder: (context, index) {
                         final item = categories[index];
 
-                        // ************* PAYING GUEST SPECIAL HANDLING *************
                         if (item['type'] == 'paying guest') {
                           return _buildCategoryCard(
                             title: item['title'],
                             icon: item['icon'],
                             gradientColors: item['color'],
                             onTap: () {
-                              final normalizedUser = _normalizeUser(widget.user);
-
                               Navigator.pushNamed(
                                 context,
                                 '/paying_guest',
                                 arguments: {
-                                  'user': normalizedUser,
+                                  'user': _currentUser,
                                 },
                               );
                             },
@@ -488,15 +500,14 @@ class _HomePageState extends State<HomePage> {
                           icon: item['icon'],
                           gradientColors: item['color'],
                           onTap: () {
+                            // Logic fix: sending the clean 'type' from your list
+                            // ensures no extra 's' is appended unless intended by the list.
                             final type = item['type'] as String;
-                            final normalizedUser = _normalizeUser(widget.user);
                             Navigator.pushNamed(
                               context,
                               '/hotels',
-                              arguments: {'user': normalizedUser, 'type': type},
+                              arguments: {'user': _currentUser, 'type': type},
                             );
-
-                            _fetchHotels(type: type).then((_) {}).catchError((_) {});
                           },
                         );
                       },

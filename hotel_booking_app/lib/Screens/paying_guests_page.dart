@@ -117,6 +117,10 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
   Map<String, dynamic> _ensureKeys(Map<String, dynamic> src) {
     final Map<String, dynamic> out = {}..addAll(src);
 
+    // Standardize Rating keys for PG similar to Hotels
+    out['avg_rating'] = src['avg_rating'] ?? src['Avg_Rating'] ?? '0';
+    out['total_reviews'] = src['total_reviews'] ?? src['Total_Reviews'] ?? '0';
+
     final rawImgs = out['pg_images'] ?? out['PG_Images'];
     List<String> imgs = [];
 
@@ -353,16 +357,16 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
                         final country = (pg['country'] ?? '').toString();
                         final pincode = (pg['pincode'] ?? '').toString();
 
-                        // Combined Address String for display
                         final addressText = (pg['address'] ?? '').toString();
                         final fullDisplayAddress = "$addressText, $city, $state, $country - $pincode";
 
-                        // Raw coordinate data for map
                         final hotelLocationCoords = (pg['hotel_location'] ?? '').toString();
 
-                        final ratingRaw = (pg['rating'] ?? '0').toString();
-                        final ratingDouble = double.tryParse(ratingRaw) ?? 0;
-                        final ratingInt = ratingDouble.floor();
+                        // STANDARDIZED RATING FETCHING
+                        final ratingRaw = (pg['avg_rating'] ?? '0').toString();
+                        final double ratingDouble = double.tryParse(ratingRaw) ?? 0.0;
+                        final int totalReviews = int.tryParse((pg['total_reviews'] ?? '0').toString()) ?? 0;
+
                         final roomPriceRaw = (pg['room_price'] ?? '').toString();
                         String roomPrice = '';
                         try {
@@ -458,11 +462,18 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       Expanded(child: Text(pgName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+                                      // INTERACTIVE STAR UI
                                       Row(
-                                        children: List.generate(5, (i) {
-                                          if (i < ratingInt) return const Icon(Icons.star, size: 16, color: Colors.orange);
-                                          return const Icon(Icons.star_border, size: 16, color: Colors.orange);
-                                        }),
+                                        children: [
+                                          Row(
+                                            children: List.generate(5, (i) {
+                                              if (i < ratingDouble.floor()) return const Icon(Icons.star, size: 16, color: Colors.orange);
+                                              return const Icon(Icons.star_border, size: 16, color: Colors.orange);
+                                            }),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text("($totalReviews)", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                                        ],
                                       ),
                                     ],
                                   ),

@@ -4,15 +4,15 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:hotel_booking_app/services/api_service.dart';
 
+// ================== LOCATION HELPERS ====================
+
 Future<String> getCurrentLocationDisplayName() async {
   try {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      //Get last known position as fallback
       Position? last = await Geolocator.getLastKnownPosition();
       if (last == null) return "Manual Location";
-      return await _reverseGeocodeToCity(last.latitude, last.longitude) ??
-          "Manual Location";
+      return await _reverseGeocodeToCity(last.latitude, last.longitude) ?? "Manual Location";
     }
 
     LocationPermission permission = await Geolocator.checkPermission();
@@ -24,73 +24,56 @@ Future<String> getCurrentLocationDisplayName() async {
       return "Permission Permanently Denied";
     }
 
-    Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-
+    Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
     final city = await _reverseGeocodeToCity(position.latitude, position.longitude);
-    if (city != null && city.isNotEmpty) return city;
-
-    // fallback to coordinates if reverse fails
-    return "Lat: ${position.latitude.toStringAsFixed(2)}, "
-        "Lng: ${position.longitude.toStringAsFixed(2)}";
+    return city ?? "Lat: ${position.latitude.toStringAsFixed(2)}, Lng: ${position.longitude.toStringAsFixed(2)}";
   } catch (e) {
     debugPrint("⚠️ Location Error: $e");
-    // try last known position
-    try {
-      Position? last = await Geolocator.getLastKnownPosition();
-      if (last != null) {
-        final city = await _reverseGeocodeToCity(last.latitude, last.longitude);
-        if (city != null && city.isNotEmpty) return city;
-        return "Lat: ${last.latitude.toStringAsFixed(2)}, "
-            "Lng: ${last.longitude.toStringAsFixed(2)}";
-      }
-    } catch (_) {}
     return "Manual Location";
   }
 }
 
 Future<String?> _reverseGeocodeToCity(double lat, double lon) async {
   try {
-    final url =
-    Uri.parse('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=$lat&lon=$lon');
+    final url = Uri.parse('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=$lat&lon=$lon');
     final response = await http.get(url, headers: {
-      "User-Agent": "HotelBookingApp/1.0 (your-email@example.com)"
+      "User-Agent": "HotelBookingApp/1.0 (contact@yourdomain.com)"
     }).timeout(const Duration(seconds: 8));
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       if (data is Map && data.containsKey('address')) {
         final addr = data['address'];
-        // prefer city, then town, then village, then state
-        String? city = addr['city'] ??
-            addr['town'] ??
-            addr['village'] ??
-            addr['municipality'] ??
-            addr['state'];
-        return city?.toString();
+        return addr['city'] ?? addr['town'] ?? addr['village'] ?? addr['municipality'] ?? addr['state'];
       }
     }
-  } catch (e) {
-    debugPrint("Reverse geocode failed: $e");
-  }
+  } catch (_) {}
   return null;
 }
 
 // ================== SEARCH REMOTE HOTELS ====================
+
 Future<List<dynamic>> remoteSearchHotels(
     String query, {
       String? city,
       Map<String, dynamic>? filters,
     }) async {
-  // Search query as a filter for the Database
-  Map<String, dynamic> dbFilters = Map<String, dynamic>.from(filters ?? {});
-  dbFilters["searchQuery"] = query;
-  if (city != null) dbFilters["city"] = city;
 
-  // Calls the filter endpoint which queries hotels_info and paying_guest_info
-  return await fetchHotelsWithFilters(dbFilters, "All");
+  Map<String, dynamic> dbFilters = Map<String, dynamic>.from(filters ?? {});
+
+  if (query.isNotEmpty) {
+    dbFilters["query"] = query;
+  }
+
+  if (city != null && city.isNotEmpty && city != "Manual Location") {
+    dbFilters["city"] = city;
+  }
+
+  // Consistent call to our unified filter fetcher
+  return await fetchHotelsWithFilters(dbFilters, dbFilters["type"] ?? "All");
 }
 
 // ========================= LOCATION SELECTOR ===========================
+
 Future<String?> openLocationSelector(BuildContext context) async {
   TextEditingController controller = TextEditingController();
   return await showDialog<String>(
@@ -106,17 +89,10 @@ Future<String?> openLocationSelector(BuildContext context) async {
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text("Cancel"),
-        ),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
         ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-          ),
-          onPressed: () {
-            Navigator.pop(context, controller.text.trim());
-          },
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+          onPressed: () => Navigator.pop(context, controller.text.trim()),
           icon: const Icon(Icons.check_circle_outline),
           label: const Text("Apply"),
         ),
@@ -125,13 +101,10 @@ Future<String?> openLocationSelector(BuildContext context) async {
   );
 }
 
-
-// ==================== FILTER SHEET (updated: Reset restores previous state, added Sort By) ========================
+// ==================== FILTER SHEET ========================
 
 Future<Map<String, dynamic>?> openFilterSheet(
     BuildContext context, Map<String, dynamic> currentFilters) async {
-
-  final Map<String, dynamic> originalFilters = Map<String, dynamic>.from(currentFilters);
 
   RangeValues priceRange = RangeValues(
     (currentFilters["minPrice"] ?? 500).toDouble(),
@@ -153,29 +126,30 @@ Future<Map<String, dynamic>?> openFilterSheet(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text("Database Filters", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text("Filter Stays", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 20),
 
-                // PRICE SLIDER
                 Text("Price Range: ₹${priceRange.start.toInt()} - ₹${priceRange.end.toInt()}"),
                 RangeSlider(
                   min: 500, max: 10000, divisions: 19,
                   values: priceRange,
+                  activeColor: Colors.green,
                   onChanged: (v) => setState(() => priceRange = v),
                 ),
 
-                // RATING DROPDOWN
                 ListTile(
                   title: const Text("Minimum Rating"),
                   trailing: DropdownButton<double>(
                     value: selectedRating,
                     hint: const Text("All"),
-                    items: [0.0, 2.0, 3.0, 4.0].map((r) => DropdownMenuItem(value: r == 0.0 ? null : r, child: Text(r == 0.0 ? "All" : "$r★ & Above"))).toList(),
+                    items: [null, 2.0, 3.0, 4.0, 4.5].map((r) => DropdownMenuItem<double>(
+                        value: r,
+                        child: Text(r == null ? "All" : "$r★ & Above")
+                    )).toList(),
                     onChanged: (v) => setState(() => selectedRating = v),
                   ),
                 ),
 
-                // SORTING
                 ListTile(
                   title: const Text("Sort By"),
                   trailing: DropdownButton<String>(
@@ -191,24 +165,20 @@ Future<Map<String, dynamic>?> openFilterSheet(
                 ),
 
                 const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                        onPressed: () {
-                          // Packaging data for the DB Handler
-                          Navigator.pop(context, {
-                            "minPrice": priceRange.start.round(),
-                            "maxPrice": priceRange.end.round(),
-                            "rating": selectedRating,
-                            "sortBy": selectedSort,
-                          });
-                        },
-                        child: const Text("Apply DB Filters"),
-                      ),
-                    ),
-                  ],
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                    onPressed: () {
+                      Navigator.pop(context, {
+                        "minPrice": priceRange.start.round(),
+                        "maxPrice": priceRange.end.round(),
+                        "rating": selectedRating,
+                        "sortBy": selectedSort,
+                      });
+                    },
+                    child: const Text("Apply Filters", style: TextStyle(color: Colors.white)),
+                  ),
                 ),
               ],
             ),
@@ -219,15 +189,45 @@ Future<Map<String, dynamic>?> openFilterSheet(
   );
 }
 
-// =========================== FETCH HOTELS WITH FILTERS ===============================
+// =========================== FETCH HOTELS WITH FILTERS (FIXED) ===============================
+
 Future<List<dynamic>> fetchHotelsWithFilters(Map<String, dynamic> filters, String type) async {
   try {
-    final response = await http.post(
-      Uri.parse("${ApiConfig.baseUrl}/hotels/filter"),
-      headers: {"Content-Type": "application/json"},
-      body: json.encode({"type": type, "filters": filters}),
-    );
-    return response.statusCode == 200 ? json.decode(response.body) : [];
+    final queryParams = <String, String>{};
+
+    // 1. Mandatory Parameter: Category Type (Hotel, Resort, etc.)
+    if (type != "All") queryParams["type"] = type;
+
+    // 2. Map 'query' for smart keyword searching
+    if (filters.containsKey("query")) queryParams["query"] = filters["query"].toString();
+
+    // 3. Map 'city' for location-based filtering
+    if (filters.containsKey("city")) queryParams["city"] = filters["city"].toString();
+
+    // 4. Map Numeric Filters (Price, Rating)
+    if (filters.containsKey("minPrice")) queryParams["minPrice"] = filters["minPrice"].toString();
+    if (filters.containsKey("maxPrice")) queryParams["maxPrice"] = filters["maxPrice"].toString();
+
+    if (filters.containsKey("rating") && filters["rating"] != null) {
+      queryParams["rating"] = filters["rating"].toString();
+    }
+
+    // 5. Map Sorting
+    if (filters.containsKey("sortBy")) queryParams["sortBy"] = filters["sortBy"].toString();
+
+    // WE ARE USING THE DEDICATED FILTER ENDPOINT
+    final uri = Uri.parse("${ApiConfig.baseUrl}/filterHotels").replace(queryParameters: queryParams);
+
+    debugPrint("Calling API: $uri"); // Helpful for debugging in terminal
+
+    final response = await http.get(uri);
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    } else {
+      debugPrint("Backend Error: ${response.statusCode}");
+      return [];
+    }
   } catch (e) {
     debugPrint("DB Fetch Error: $e");
     return [];
