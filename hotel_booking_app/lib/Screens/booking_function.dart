@@ -154,7 +154,7 @@ class _BookingPageState extends State<BookingPage> {
     final parts = [address, city, state, country, pincode].where((e) => e != null && e.toString().trim().isNotEmpty).map((e) => e.toString().trim()).toList();
     return parts.isEmpty ? '' : parts.join(', ');
   }
-  String get hotelContact => (hotel['hotel_contact'] ?? hotel['Hotel_Contact'] ?? '').toString();
+  String get hotelContact => (hotel['hotel_contact'] ?? hotel['Hotel_Contact'] ?? hotel['pg_contact'] ?? hotel['mobile'] ?? hotel['contact_no'] ?? '').toString();
   String get hotelAmenities => (hotel['amenities'] ?? hotel['Amenities'] ?? '').toString();
   String get hotelRating => (hotel['rating'] ?? hotel['Rating'] ?? '').toString();
 
@@ -210,7 +210,10 @@ class _BookingPageState extends State<BookingPage> {
   }
 
   double get pgTotalForMonths => pgMonthlyPrice * persons * months;
-  double get gst => 0.05 * ((isPgMode ? pgTotalForMonths : allDayPrice) + customizationPrice);
+
+  // Update: GST is 0 for PG mode
+  double get gst => isPgMode ? 0.0 : (0.05 * (allDayPrice + customizationPrice));
+
   double get totalAmount => (isPgMode ? pgTotalForMonths : allDayPrice) + customizationPrice + gst;
 
   void _updateRooms() {
@@ -422,15 +425,19 @@ class _BookingPageState extends State<BookingPage> {
     final email = emailController.text.trim();
     final phone = phoneController.text.trim();
     final partnerId = hotel['partner_id'] ?? hotel['Partner_Id'] ?? '';
-    final hotelId = hotel['hotel_id'] ?? hotel['Hotel_Id'] ?? hotel['PG_ID'] ?? '';
-    String extraRoomsStr = selectedExtraRooms.entries.where((e) => e.value).map((e) => e.key).join(", ");
 
+    // ID mapping for PG to hotel_id
+    final hotelId = isPgMode
+        ? (hotel['pg_id'] ?? hotel['PG_ID'] ?? hotel['hotel_id'] ?? '')
+        : (hotel['hotel_id'] ?? hotel['Hotel_Id'] ?? '');
+
+    String extraRoomsStr = selectedExtraRooms.entries.where((e) => e.value).map((e) => e.key).join(", ");
     String mainRoom = (hotel['Selected_Room_Type'] ?? "").toString();
-    List<String> extras = selectedExtraRooms.entries.where((e) => e.value).map((e) => e.key).toList();
-    int baseCount = (rooms - extras.length) > 0 ? (rooms - extras.length) : 1;
-    String finalRoomDesc = "$mainRoom (x$baseCount)";
-    if (extras.isNotEmpty) {
-      finalRoomDesc += ", " + extras.map((e) => "$e (x1)").join(", ");
+
+    // Construct Room Details for Summary and Payment Page
+    String fullRoomDesc = mainRoom;
+    if (!isPgMode && extraRoomsStr.isNotEmpty) {
+      fullRoomDesc = "$mainRoom, $extraRoomsStr";
     }
 
     Map<String, dynamic> bookingData = {
@@ -458,6 +465,7 @@ class _BookingPageState extends State<BookingPage> {
       "coupon_code": "",
       "gst": gst.toStringAsFixed(2),
       "last_payment_record_id": "",
+      "room_type": fullRoomDesc, // Passing final string to Payment Page
     };
 
     if (!isPgMode) {
@@ -465,22 +473,23 @@ class _BookingPageState extends State<BookingPage> {
         "hotel_type": hotel['hotel_type'] ?? hotel['Hotel_Type'] ?? "Hotel",
         "check_in_date": "${checkInDate!.day}-${checkInDate!.month}-${checkInDate!.year}",
         "check_out_date": "${checkOutDate!.day}-${checkOutDate!.month}-${checkOutDate!.year}",
-        "guest_count": (adults + children).toString(),
+        "guest_count": (adults + children),
         "adults": adults,
         "children": children,
         "total_rooms_booked": rooms,
         "total_days_at_stay": daysOfStay,
         "room_price_per_day": totalRoomPricePerDay.toStringAsFixed(2),
         "all_days_price": allDayPrice.toStringAsFixed(2),
-        "room_type": mainRoom + (extraRoomsStr.isNotEmpty ? ", $extraRoomsStr" : ""),
       });
     } else {
       bookingData.addAll({
+        "hotel_type": "PG",
         "Selected_Room_Type": mainRoom,
         "selected_room_price": (hotel['Selected_Room_Price'] ?? "0").toString(),
         "room_price_per_month": pgMonthlyPrice.toStringAsFixed(2),
         "all_months_price": pgTotalForMonths.toStringAsFixed(2),
         "monthly_price": pgMonthlyPrice.toStringAsFixed(2),
+        "guest_count": persons,
         "persons": persons,
         "months": months,
         "check_in_date": "${checkInDate!.day}-${checkInDate!.month}-${checkInDate!.year}",
@@ -500,10 +509,9 @@ class _BookingPageState extends State<BookingPage> {
           _summaryRow("Check-Out Date", bookingData["check_out_date"]),
           _summaryRow("Days of Stay", "$daysOfStay"),
           _summaryRow("Rooms", "$rooms"),
-          _summaryRow("Room Type", mainRoom),
-          if (extraRoomsStr.isNotEmpty) _summaryRow("Extra Rooms", extraRoomsStr),
+          _summaryRow("Room Type", fullRoomDesc), // Summary View Fixed
         ] else ...[
-          _summaryRow("Room Type", (hotel['Selected_Room_Type'] ?? "").toString()),
+          _summaryRow("Room Type", fullRoomDesc), // Summary View Fixed
           _summaryRow("Persons", "$persons"),
           _summaryRow("Months", "$months"),
         ],
@@ -521,7 +529,7 @@ class _BookingPageState extends State<BookingPage> {
       _buildDesignCard(children: [
         _summaryRow("Base Stay Price", "₹${(isPgMode ? pgTotalForMonths : allDayPrice).toStringAsFixed(2)}"),
         _summaryRow("Customization", "₹${customizationPrice.toStringAsFixed(2)}"),
-        _summaryRow("GST (5%)", "₹${gst.toStringAsFixed(2)}"),
+        _summaryRow("GST (5%)", isPgMode ? "₹0.00 (Exempted)" : "₹${gst.toStringAsFixed(2)}"),
         const Divider(height: 20, thickness: 1),
         _summaryRow("Total Payable", "₹${totalAmount.toStringAsFixed(2)}"),
       ]),
@@ -558,7 +566,7 @@ class _BookingPageState extends State<BookingPage> {
   }
 }
 
-// ====================== Customization Page=======================
+// ====================== Customization Page =======================
 class CustomizationPage extends StatefulWidget {
   final Map hotel;
   final Map<String, dynamic> initialSelection;

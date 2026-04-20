@@ -55,14 +55,14 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
         final List<Map<String, dynamic>> filtered = decoded
             .whereType<Map<String, dynamic>>()
             .where((e) {
+          // Check for mandatory fields; PGs and Hotels both share these
           final hasKeys = e.containsKey('hotel_name') &&
               e.containsKey('check_in_date') &&
               e.containsKey('check_out_date');
           if (!hasKeys) return false;
 
-          final status = (e['booking_status'] ?? '').toString().toLowerCase();
-
           try {
+            // Robust date parsing for both Hotel and PG date formats
             final checkOutStr = e['check_out_date'].toString().split(" ").first;
             final checkOutDate = DateTime.parse(checkOutStr);
             final checkOutOnlyDate = DateTime(checkOutDate.year, checkOutDate.month, checkOutDate.day);
@@ -73,6 +73,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
               return checkOutOnlyDate.isBefore(today);
             }
           } catch (_) {
+            // If date parsing fails, we include it by default to avoid losing data
             return true;
           }
         })
@@ -370,6 +371,7 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
     final checkIn = booking['check_in_date']?.toString() ?? 'N/A';
     final checkOut = booking['check_out_date']?.toString() ?? 'N/A';
 
+    // Priority for room_type as PGs use this for specific categories
     final roomType = booking['room_type']?.toString() ??
         booking['hotel_type']?.toString() ??
         'Standard';
@@ -380,7 +382,8 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
 
     final bookingStatus = booking['booking_status']?.toString() ?? 'N/A';
 
-    final totalDays = booking['total_days_at_stay']?.toString() ?? '1';
+    final totalDays = booking['total_days_at_stay']?.toString() ??
+        booking['months']?.toString() ?? '1';
 
     final finalPayable = booking['final_payable_amount'] ??
         booking['original_amount'] ??
@@ -503,7 +506,9 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
                     children: [
                       _buildInfoChip(Icons.login, "Check-in", checkIn),
                       _buildInfoChip(Icons.logout, "Check-out", checkOut),
-                      _buildInfoChip(Icons.nights_stay, "Nights", totalDays),
+                      _buildInfoChip(Icons.calendar_today,
+                          booking['hotel_type'] == 'PG' ? "Months" : "Nights",
+                          totalDays),
                       _buildInfoChip(Icons.bed, "Room Type", roomType),
                       _buildInfoChip(Icons.attach_money, "Payable",
                           "₹${_formatCurrency(finalPayable)}"),

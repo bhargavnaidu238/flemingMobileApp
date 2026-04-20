@@ -43,8 +43,14 @@ class _HomePageState extends State<HomePage> {
     {
       'title': 'Mountain Villas',
       'subtitle': 'Experience serenity in every sunrise',
-      'image': 'https://images.unsplash.com/photo-1506744038136-46273834b3fb',
+      'image': 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e',
     },
+    {
+      'title': 'Party Halls',
+      'subtitle': 'Experience the Party/Birthday themed rooms',
+      'image': 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819',
+    },
+
   ];
 
   final List<Map<String, dynamic>> categories = [
