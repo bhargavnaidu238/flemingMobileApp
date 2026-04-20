@@ -403,10 +403,21 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
         ElevatedButton(
           onPressed: () {
             final data = Map<String, dynamic>.from(pg);
-            data["selected_room_type"] = selectedRoomType;
-            data["selected_room_price"] = selectedRoomPrice;
+            // FIXED: Using uppercase keys to match BookingPage expectations
+            data["Selected_Room_Type"] = selectedRoomType;
+            data["Selected_Room_Price"] = selectedRoomPrice;
+            data["room_type"] = selectedRoomType; // Additional sync for DB mapping
             data["pg_images"] = images;
-            Navigator.pushNamed(context, "/booking", arguments: {"pg": data, "user": widget.user, "userId": widget.user["userId"] ?? ""});
+
+            Navigator.pushNamed(
+                context,
+                "/booking",
+                arguments: {
+                  "pg": data,
+                  "user": widget.user,
+                  "userId": widget.user["userId"] ?? ""
+                }
+            );
           },
           style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
           child: const Text("Book Now", style: TextStyle(color: Colors.white)),

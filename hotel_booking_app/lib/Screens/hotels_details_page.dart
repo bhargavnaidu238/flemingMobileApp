@@ -174,18 +174,29 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
     return '${ApiConfig.baseUrl}/hotel_images/$path';
   }
 
+  // FIXED: Navigate strictly using latitude and longitude
   Future<void> _openDirections() async {
-    final rawLoc = widget.hotel['Hotel_Location'] ?? widget.hotel['hotel_location'] ?? widget.hotel['location'];
-    if (rawLoc == null) {
+    final lat = widget.hotel['latitude'] ?? widget.hotel['Latitude'];
+    final lng = widget.hotel['longitude'] ?? widget.hotel['Longitude'];
+
+    if (lat == null || lng == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No location available for this hotel')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('GPS coordinates not available for this hotel')));
       }
       return;
     }
-    final loc = rawLoc.toString().trim();
-    final Uri googleMapsUrl = Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(loc)}");
+
+    final Uri googleMapsUrl = Uri.parse("google.navigation:q=$lat,$lng");
+    final Uri appleMapsUrl = Uri.parse("http://maps.apple.com/?q=$lat,$lng");
+
     if (await canLaunchUrl(googleMapsUrl)) {
       await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+    } else if (await canLaunchUrl(appleMapsUrl)) {
+      await launchUrl(appleMapsUrl, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not launch maps application')));
+      }
     }
   }
 

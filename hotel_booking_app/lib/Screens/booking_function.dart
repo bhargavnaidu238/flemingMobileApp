@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'hotel_payment.dart';
 import 'package:http/http.dart' as http;
 import 'package:hotel_booking_app/services/api_service.dart';
+import 'Customize_Preference_page.dart';
 
 class BookingPage extends StatefulWidget {
   final Map hotel;
@@ -154,7 +155,7 @@ class _BookingPageState extends State<BookingPage> {
     final parts = [address, city, state, country, pincode].where((e) => e != null && e.toString().trim().isNotEmpty).map((e) => e.toString().trim()).toList();
     return parts.isEmpty ? '' : parts.join(', ');
   }
-  String get hotelContact => (hotel['hotel_contact'] ?? hotel['Hotel_Contact'] ?? '').toString();
+  String get hotelContact => (hotel['hotel_contact'] ?? hotel['Hotel_Contact'] ?? hotel['pg_contact'] ?? hotel['mobile'] ?? hotel['contact_no'] ?? '').toString();
   String get hotelAmenities => (hotel['amenities'] ?? hotel['Amenities'] ?? '').toString();
   String get hotelRating => (hotel['rating'] ?? hotel['Rating'] ?? '').toString();
 
@@ -210,7 +211,9 @@ class _BookingPageState extends State<BookingPage> {
   }
 
   double get pgTotalForMonths => pgMonthlyPrice * persons * months;
-  double get gst => 0.05 * ((isPgMode ? pgTotalForMonths : allDayPrice) + customizationPrice);
+
+  double get gst => isPgMode ? 0.0 : (0.05 * (allDayPrice + customizationPrice));
+
   double get totalAmount => (isPgMode ? pgTotalForMonths : allDayPrice) + customizationPrice + gst;
 
   void _updateRooms() {
@@ -380,8 +383,26 @@ class _BookingPageState extends State<BookingPage> {
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               Radio<bool>(value: true, groupValue: wantsCustomization, activeColor: const Color(0xFF673AB7), onChanged: (v) async {
                 setState(() => wantsCustomization = v!);
-                final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => CustomizationPage(hotel: hotel, initialSelection: customizationSelection)));
-                if (result != null) setState(() { customizationSelection = result; customizationPrice = (result['customizationPrice'] ?? 0.0) as double; });
+
+                // FIXED: Passing email and userId correctly from controllers/widget
+                final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => CustomizationPage(
+                          hotel: hotel,
+                          initialSelection: customizationSelection,
+                          email: emailController.text.trim(), // Passing email from form
+                          userId: widget.userId,             // Passing userId from widget
+                        )
+                    )
+                );
+
+                if (result != null) {
+                  setState(() {
+                    customizationSelection = result;
+                    customizationPrice = (result['customizationPrice'] ?? 0.0) as double;
+                  });
+                }
               }),
               const Text("Yes"),
               const SizedBox(width: 20),
@@ -422,15 +443,17 @@ class _BookingPageState extends State<BookingPage> {
     final email = emailController.text.trim();
     final phone = phoneController.text.trim();
     final partnerId = hotel['partner_id'] ?? hotel['Partner_Id'] ?? '';
-    final hotelId = hotel['hotel_id'] ?? hotel['Hotel_Id'] ?? hotel['PG_ID'] ?? '';
-    String extraRoomsStr = selectedExtraRooms.entries.where((e) => e.value).map((e) => e.key).join(", ");
 
+    final hotelId = isPgMode
+        ? (hotel['pg_id'] ?? hotel['PG_ID'] ?? hotel['hotel_id'] ?? '')
+        : (hotel['hotel_id'] ?? hotel['Hotel_Id'] ?? '');
+
+    String extraRoomsStr = selectedExtraRooms.entries.where((e) => e.value).map((e) => e.key).join(", ");
     String mainRoom = (hotel['Selected_Room_Type'] ?? "").toString();
-    List<String> extras = selectedExtraRooms.entries.where((e) => e.value).map((e) => e.key).toList();
-    int baseCount = (rooms - extras.length) > 0 ? (rooms - extras.length) : 1;
-    String finalRoomDesc = "$mainRoom (x$baseCount)";
-    if (extras.isNotEmpty) {
-      finalRoomDesc += ", " + extras.map((e) => "$e (x1)").join(", ");
+
+    String fullRoomDesc = mainRoom;
+    if (!isPgMode && extraRoomsStr.isNotEmpty) {
+      fullRoomDesc = "$mainRoom, $extraRoomsStr";
     }
 
     Map<String, dynamic> bookingData = {
@@ -458,6 +481,12 @@ class _BookingPageState extends State<BookingPage> {
       "coupon_code": "",
       "gst": gst.toStringAsFixed(2),
       "last_payment_record_id": "",
+      "room_type": fullRoomDesc,
+      // Adding new Customization data to bookingData
+      "travel_style": customizationSelection['travel_style'] ?? "",
+      "meal_preference": customizationSelection['meal_preference'] ?? "",
+      "stay_preference": (customizationSelection['stay_preference'] as List?)?.join(", ") ?? "",
+      "location_preference": customizationSelection['location_preference'] ?? "",
     };
 
     if (!isPgMode) {
@@ -465,22 +494,23 @@ class _BookingPageState extends State<BookingPage> {
         "hotel_type": hotel['hotel_type'] ?? hotel['Hotel_Type'] ?? "Hotel",
         "check_in_date": "${checkInDate!.day}-${checkInDate!.month}-${checkInDate!.year}",
         "check_out_date": "${checkOutDate!.day}-${checkOutDate!.month}-${checkOutDate!.year}",
-        "guest_count": (adults + children).toString(),
+        "guest_count": (adults + children),
         "adults": adults,
         "children": children,
         "total_rooms_booked": rooms,
         "total_days_at_stay": daysOfStay,
         "room_price_per_day": totalRoomPricePerDay.toStringAsFixed(2),
         "all_days_price": allDayPrice.toStringAsFixed(2),
-        "room_type": mainRoom + (extraRoomsStr.isNotEmpty ? ", $extraRoomsStr" : ""),
       });
     } else {
       bookingData.addAll({
+        "hotel_type": "PG",
         "Selected_Room_Type": mainRoom,
         "selected_room_price": (hotel['Selected_Room_Price'] ?? "0").toString(),
         "room_price_per_month": pgMonthlyPrice.toStringAsFixed(2),
         "all_months_price": pgTotalForMonths.toStringAsFixed(2),
         "monthly_price": pgMonthlyPrice.toStringAsFixed(2),
+        "guest_count": persons,
         "persons": persons,
         "months": months,
         "check_in_date": "${checkInDate!.day}-${checkInDate!.month}-${checkInDate!.year}",
@@ -500,10 +530,9 @@ class _BookingPageState extends State<BookingPage> {
           _summaryRow("Check-Out Date", bookingData["check_out_date"]),
           _summaryRow("Days of Stay", "$daysOfStay"),
           _summaryRow("Rooms", "$rooms"),
-          _summaryRow("Room Type", mainRoom),
-          if (extraRoomsStr.isNotEmpty) _summaryRow("Extra Rooms", extraRoomsStr),
+          _summaryRow("Room Type", fullRoomDesc),
         ] else ...[
-          _summaryRow("Room Type", (hotel['Selected_Room_Type'] ?? "").toString()),
+          _summaryRow("Room Type", fullRoomDesc),
           _summaryRow("Persons", "$persons"),
           _summaryRow("Months", "$months"),
         ],
@@ -511,8 +540,9 @@ class _BookingPageState extends State<BookingPage> {
 
       _buildSectionHeader("B) CUSTOMIZATION ADD-ON"),
       _buildDesignCard(children: [
-        _summaryRow("Stay Type", customizationSelection['stayType'] ?? "Standard"),
-        _summaryRow("Options Selected", (customizationSelection['type1'] as List?)?.join(", ") ?? "None"),
+        _summaryRow("Travel Style", customizationSelection['travel_style'] ?? "Standard"),
+        _summaryRow("Meal", customizationSelection['meal_preference'] ?? "Not Specified"),
+        _summaryRow("Stay Pref", (customizationSelection['stay_preference'] as List?)?.join(", ") ?? "None"),
         _summaryRow("Add-ons", (customizationSelection['addons'] as List?)?.join(", ") ?? "None"),
         _summaryRow("Custom Price", "₹${customizationPrice.toStringAsFixed(2)}"),
       ]),
@@ -521,7 +551,7 @@ class _BookingPageState extends State<BookingPage> {
       _buildDesignCard(children: [
         _summaryRow("Base Stay Price", "₹${(isPgMode ? pgTotalForMonths : allDayPrice).toStringAsFixed(2)}"),
         _summaryRow("Customization", "₹${customizationPrice.toStringAsFixed(2)}"),
-        _summaryRow("GST (5%)", "₹${gst.toStringAsFixed(2)}"),
+        _summaryRow("GST (5%)", isPgMode ? "₹0.00 (Exempted)" : "₹${gst.toStringAsFixed(2)}"),
         const Divider(height: 20, thickness: 1),
         _summaryRow("Total Payable", "₹${totalAmount.toStringAsFixed(2)}"),
       ]),
@@ -555,72 +585,5 @@ class _BookingPageState extends State<BookingPage> {
       Expanded(flex: 4, child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black54))),
       Expanded(flex: 6, child: Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600), softWrap: true)),
     ]));
-  }
-}
-
-// ====================== Customization Page=======================
-class CustomizationPage extends StatefulWidget {
-  final Map hotel;
-  final Map<String, dynamic> initialSelection;
-  const CustomizationPage({required this.hotel, required this.initialSelection, Key? key}) : super(key: key);
-  @override
-  State<CustomizationPage> createState() => _CustomizationPageState();
-}
-
-class _CustomizationPageState extends State<CustomizationPage> {
-  String stayType = "Family";
-  final List<Map<String, dynamic>> type1Options = [{"label": "A", "price": 100.0}, {"label": "B", "price": 200.0}, {"label": "C", "price": 300.0}, {"label": "D", "price": 400.0}];
-  Map<String, bool> type1Selected = {};
-  List<Map<String, dynamic>> addons = [];
-  Map<String, bool> addonsSelected = {};
-
-  @override
-  void initState() {
-    super.initState();
-    stayType = widget.initialSelection['stayType'] ?? "Family";
-    for (var opt in type1Options) type1Selected[opt['label']] = (widget.initialSelection['type1'] ?? []).contains(opt['label']);
-    final hotelType = (widget.hotel['Hotel_Type'] ?? widget.hotel['HotelType'] ?? "").toString().toLowerCase();
-    if (hotelType.contains('resort')) {
-      addons = [{"label": "Firecamp", "price": 500.0}, {"label": "Music Box", "price": 0.0}, {"label": "Pool Party", "price": 1000.0}, {"label": "Spa Session", "price": 800.0}, {"label": "Bonfire Snacks", "price": 250.0}];
-    } else {
-      addons = [{"label": "Meals (Menu at hotel)", "price": 0.0}, {"label": "Snacks (Menu at hotel)", "price": 0.0}, {"label": "Complimentary Tea/Coffee", "price": 0.0}];
-    }
-    for (var a in addons) addonsSelected[a['label']] = (widget.initialSelection['addons'] ?? []).contains(a['label']);
-  }
-
-  double computeCustomizationPrice() {
-    double total = 0.0;
-    type1Selected.forEach((k, v) { if (v) total += type1Options.firstWhere((o) => o['label'] == k)['price']; });
-    addonsSelected.forEach((k, v) { if (v) total += addons.firstWhere((o) => o['label'] == k)['price']; });
-    return total;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Customize your stay'), backgroundColor: const Color(0xFF2E7D32)),
-      body: Column(children: [
-        Expanded(child: ListView(padding: const EdgeInsets.all(12), children: [
-          const Text("Stay Type", style: TextStyle(fontWeight: FontWeight.bold)),
-          ...['Family', 'Business', 'Vacation', 'Type4'].map((t) => RadioListTile(title: Text(t), value: t, groupValue: stayType, onChanged: (v) => setState(() => stayType = v.toString()))),
-          const Divider(),
-          const Text("Type 1 Options", style: TextStyle(fontWeight: FontWeight.bold)),
-          ...type1Options.map((opt) => CheckboxListTile(title: Text("${opt['label']} (₹${opt['price']})"), value: type1Selected[opt['label']], onChanged: (v) => setState(() => type1Selected[opt['label']!] = v!))),
-          const Divider(),
-          const Text("Add-ons", style: TextStyle(fontWeight: FontWeight.bold)),
-          ...addons.map((a) => CheckboxListTile(title: Text("${a['label']} (₹${a['price']})"), value: addonsSelected[a['label']], onChanged: (v) => setState(() => addonsSelected[a['label']!] = v!))),
-        ])),
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E7D32), minimumSize: const Size(double.infinity, 50)),
-            onPressed: () {
-              Navigator.pop(context, {'stayType': stayType, 'type1': type1Selected.entries.where((e) => e.value).map((e) => e.key).toList(), 'addons': addonsSelected.entries.where((e) => e.value).map((e) => e.key).toList(), 'customizationPrice': computeCustomizationPrice()});
-            },
-            child: const Text("Save Customization", style: TextStyle(color: Colors.white)),
-          ),
-        )
-      ]),
-    );
   }
 }

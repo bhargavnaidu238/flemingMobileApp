@@ -154,7 +154,7 @@ class _ProfilePageState extends State<ProfilePage> {
             context,
             MaterialPageRoute(
               builder: (_) =>
-                  CustomizePreferencesPage(email: widget.email, userId: widget.userId),
+                  CustomizationPage(email: widget.email, userId: widget.userId),
             ),
           );
           fetchProfile();
