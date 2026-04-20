@@ -3,538 +3,308 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:hotel_booking_app/services/api_service.dart';
 
-class CustomizePreferencesPage extends StatefulWidget {
-  final String email;
-  final String userId;
+class CustomizationPage extends StatefulWidget {
+  final Map? hotel;
+  final Map<String, dynamic>? initialSelection;
+  final String? email;
+  final String? userId;
 
-  const CustomizePreferencesPage({
-    required this.email,
-    required this.userId,
+  const CustomizationPage({
+    this.hotel,
+    this.initialSelection,
+    this.email,
+    this.userId,
     Key? key,
   }) : super(key: key);
-
-  @override
-  State<CustomizePreferencesPage> createState() =>
-      _CustomizePreferencesPageState();
-}
-
-class _CustomizePreferencesPageState extends State<CustomizePreferencesPage> {
-  // Section 1
-  String roomType = "Single";
-  String mealPreference = "Veg";
-  List<String> addOns = [];
-  RangeValues budgetRange = const RangeValues(500, 10000);
-
-  // Section 2
-  String travelStyle = "Business";
-  List<String> stayPreference = [];
-  String forYouOption = "";
-  bool showForYouTextField = false;
-  final TextEditingController forYouController = TextEditingController();
-
-  bool isSaving = false;
-
-  @override
-  void dispose() {
-    forYouController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: const Text("Customize Preferences"),
-        centerTitle: true,
-        backgroundColor: Colors.teal,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Column(
-          children: [
-            _buildCard(
-              title: "Room & Meal Preferences",
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSectionTitle("Room Type"),
-                  _buildRadioGroup(
-                    options: ["Single", "Double", "Suite"],
-                    groupValue: roomType,
-                    onChanged: (val) => setState(() => roomType = val!),
-                  ),
-                  _buildSectionTitle("Meal Preference"),
-                  _buildRadioGroup(
-                    options: ["Veg", "Non Veg", "Any"],
-                    groupValue: mealPreference,
-                    onChanged: (val) => setState(() => mealPreference = val!),
-                  ),
-                  _buildSectionTitle("Add Ons"),
-                  _buildCheckboxGroup(
-                    options: ["Spa", "Breakfast", "Lunch", "Dinner"],
-                    selected: addOns,
-                    onChanged: (item, isChecked) {
-                      setState(() {
-                        isChecked ? addOns.add(item) : addOns.remove(item);
-                      });
-                    },
-                  ),
-                  _buildSectionTitle("Budget Range"),
-                  RangeSlider(
-                    min: 500,
-                    max: 10000,
-                    values: budgetRange,
-                    divisions: 95,
-                    activeColor: Colors.teal,
-                    labels: RangeLabels(
-                      "₹${budgetRange.start.toInt()}",
-                      "₹${budgetRange.end.toInt()}",
-                    ),
-                    onChanged: (RangeValues values) {
-                      setState(() => budgetRange = values);
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            _buildCard(
-              title: "Travel & Stay Preferences",
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSectionTitle("Travel Style"),
-                  DropdownButtonFormField<String>(
-                    value: travelStyle,
-                    decoration: _inputDecoration(),
-                    items: ["Business", "Family", "Vacation"]
-                        .map((style) =>
-                        DropdownMenuItem(
-                          value: style,
-                          child: Text(style),
-                        ))
-                        .toList(),
-                    onChanged: (value) =>
-                        setState(() => travelStyle = value!),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildSectionTitle("Stay Preference"),
-                  Wrap(
-                    spacing: 8,
-                    children: ["Sea View", "City View", "Luxury Suite"]
-                        .map((pref) {
-                      final selected = stayPreference.contains(pref);
-                      return FilterChip(
-                        label: Text(pref),
-                        selected: selected,
-                        selectedColor: Colors.teal.shade300,
-                        onSelected: (isSelected) {
-                          setState(() {
-                            isSelected
-                                ? stayPreference.add(pref)
-                                : stayPreference.remove(pref);
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildSectionTitle("For You"),
-                  Wrap(
-                    spacing: 8,
-                    children: ["Romantic", "Adventure", "Relax", "Other"]
-                        .map((opt) {
-                      return ChoiceChip(
-                        label: Text(opt),
-                        selected: forYouOption == opt,
-                        selectedColor: Colors.teal,
-                        onSelected: (sel) {
-                          setState(() {
-                            forYouOption = opt;
-                            showForYouTextField = opt == "Other";
-                            if (!showForYouTextField) {
-                              forYouController.clear();
-                            }
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  if (showForYouTextField)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: TextField(
-                        controller: forYouController,
-                        decoration:
-                        _inputDecoration(label: "Please specify"),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: isSaving ? null : _savePreferences,
-              icon: isSaving
-                  ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white),
-              )
-                  : const Icon(Icons.save),
-              label: Text(isSaving ? "Saving..." : "Save Preferences"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal,
-                minimumSize: const Size(double.infinity, 45),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ---------------- Helper Widgets ----------------
-  Widget _buildCard({required String title, required Widget child}) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.teal)),
-            const SizedBox(height: 4),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) =>
-      Padding(
-        padding: const EdgeInsets.only(top: 4, bottom: 2),
-        child: Text(title,
-            style:
-            const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-      );
-
-  Widget _buildRadioGroup({
-    required List<String> options,
-    required String groupValue,
-    required Function(String?) onChanged,
-  }) {
-    return Wrap(
-      spacing: 10,
-      children: options
-          .map(
-            (opt) =>
-            ChoiceChip(
-              label: Text(opt),
-              selected: groupValue == opt,
-              selectedColor: Colors.teal,
-              onSelected: (_) => onChanged(opt),
-            ),
-      )
-          .toList(),
-    );
-  }
-
-  Widget _buildCheckboxGroup({
-    required List<String> options,
-    required List<String> selected,
-    required Function(String, bool) onChanged,
-  }) {
-    return Wrap(
-      spacing: 10,
-      children: options.map((opt) {
-        final checked = selected.contains(opt);
-        return FilterChip(
-          label: Text(opt),
-          selected: checked,
-          selectedColor: Colors.teal.shade300,
-          onSelected: (val) => onChanged(opt, val),
-        );
-      }).toList(),
-    );
-  }
-
-  InputDecoration _inputDecoration({String? label}) =>
-      InputDecoration(
-        labelText: label,
-        contentPadding:
-        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      );
-
-  // ---------------- Core Logic ----------------
-  Future<void> _savePreferences() async {
-    setState(() => isSaving = true);
-
-    final addOnsString = addOns.isNotEmpty ? addOns.join(", ") : null;
-    final stayPreferenceString = stayPreference.isNotEmpty ? stayPreference
-        .join(", ") : null;
-    final forYouText = (forYouOption.isNotEmpty)
-        ? (forYouOption == "Other" ? (forYouController.text.isNotEmpty
-        ? forYouController.text
-        : null) : forYouOption)
-        : null;
-
-    final userPreferences = {
-      "email": widget.email,
-      "userId": widget.userId,
-      "Room_Type": roomType != "Single" ? roomType : null,
-      "Meal_Preference": mealPreference != "Veg" ? mealPreference : null,
-      "Add_ons": addOnsString,
-      "Budget_Min": budgetRange.start != 500 ? budgetRange.start.toInt() : null,
-      "Budget_Max": budgetRange.end != 10000 ? budgetRange.end.toInt() : null,
-      "Travel_Style": travelStyle != "Business" ? travelStyle : null,
-      "Stay_Preference": stayPreferenceString,
-      "For_You": forYouText,
-      "Location_Preference": null
-    };
-
-    try {
-      final response = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/customize'),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode(userPreferences),
-      );
-
-      if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Preferences saved successfully!"),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Failed: ${response.body}"),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error: $e"),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-    } finally {
-      setState(() => isSaving = false);
-    }
-  }
-}
-
-
-// -------------------- Customization Page --------------------
-class CustomizationPage extends StatefulWidget {
-  final Map hotel;
-  final Map<String, dynamic> initialSelection;
-
-  const CustomizationPage({required this.hotel, required this.initialSelection, Key? key}) : super(key: key);
 
   @override
   State<CustomizationPage> createState() => _CustomizationPageState();
 }
 
 class _CustomizationPageState extends State<CustomizationPage> {
-  String stayType = "Family"; // Family, Business, Vacation, Type4
+  String travelStyle = "Family";
+  String mealPreference = "Any";
+  String stayType = "Hotel";
+  RangeValues budgetRange = const RangeValues(500, 10000);
 
-  final List<Map<String, dynamic>> type1Options = [
-    {"label": "A", "price": 100.0},
-    {"label": "B", "price": 200.0},
-    {"label": "C", "price": 300.0},
-    {"label": "D", "price": 400.0},
-  ];
-  Map<String, bool> type1Selected = {};
+  List<String> currentTravelOptions = [];
+  List<String> currentStayOptions = [];
+  Map<String, bool> stayPreferenceSelected = {};
+
+  Map<String, bool> forYouSelected = {};
+  final List<String> forYouOptions = ['Adventure', 'Relax', 'Other'];
+
+  final TextEditingController _otherForYouController = TextEditingController();
+  final TextEditingController _locationController = TextEditingController();
 
   List<Map<String, dynamic>> addons = [];
   Map<String, bool> addonsSelected = {};
+  bool isSaving = false;
+
+  bool get isProfileMode => widget.hotel == null;
 
   @override
   void initState() {
     super.initState();
-    stayType = widget.initialSelection['stayType'] ?? "Family";
+    final initial = widget.initialSelection ?? {};
 
-    final List initialType1 = (widget.initialSelection['type1'] ?? []);
-    for (var opt in type1Options) {
-      type1Selected[opt['label']] = initialType1.contains(opt['label']);
-    }
+    travelStyle = initial['travel_style'] ?? "Family";
+    mealPreference = initial['meal_preference'] ?? "Any";
+    _locationController.text = initial['location_preference'] ?? "";
+    _otherForYouController.text = initial['other_for_you_text'] ?? "";
 
-    final hotelType = (widget.hotel['Hotel_Type'] ?? widget.hotel['HotelType'] ?? "").toString().toLowerCase();
-    if (hotelType.contains('resort')) {
+    double bMin = double.tryParse(initial['budget_min']?.toString() ?? "500") ?? 500;
+    double bMax = double.tryParse(initial['budget_max']?.toString() ?? "10000") ?? 10000;
+    budgetRange = RangeValues(bMin, bMax);
+
+    stayType = (widget.hotel?['Hotel_Type'] ?? widget.hotel?['HotelType'] ?? "Hotel").toString();
+    final hTypeLower = stayType.toLowerCase();
+
+    // Setup Options based on Category
+    if (isProfileMode) {
+      currentTravelOptions = ['Family', 'Business', 'Vacation', 'Solo Traveller', 'Leisure'];
+      currentStayOptions = ['Sea View', 'Hill Stays', 'Sky View', 'City View', 'Forest Stay'];
+    } else if (hTypeLower.contains('resort')) {
+      currentTravelOptions = ['Friends', 'Family', 'Team Outings', 'Solo Traveller', 'Vacation'];
+      currentStayOptions = ['Pool Side', 'Garden View', 'Mountain View', 'Luxury Villa', 'Cottage'];
       addons = [
-        {"label": "Firecamp", "price": 500.0},
-        {"label": "Music Box", "price": 0.0},
-        {"label": "Pool Party", "price": 1000.0},
-        {"label": "Spa Session", "price": 800.0},
-        {"label": "Bonfire Snacks", "price": 250.0},
+        {"label": "Camp Fire", "price": 500.0, "icon": Icons.fireplace},
+        {"label": "Sound Box", "price": 200.0, "icon": Icons.speaker},
+        {"label": "Pool Party", "price": 1500.0, "icon": Icons.pool},
+        {"label": "Bonfire Snacks", "price": 400.0, "icon": Icons.set_meal},
+        {"label": "Indoor Games", "price": 0.0, "icon": Icons.sports_esports},
+        {"label": "Spa Session", "price": 1200.0, "icon": Icons.spa}
       ];
     } else {
+      currentTravelOptions = ['Family', 'Business', 'Vacation', 'Solo Traveller', 'Leisure'];
+      currentStayOptions = ['Balcony Rooms', 'Lower floor Rooms', 'Sea View', 'High Floor', 'Quiet Zone'];
       addons = [
-        {"label": "Meals (Menu at hotel)", "price": 0.0},
-        {"label": "Snacks (Menu at hotel)", "price": 0.0},
-        {"label": "Complimentary Tea/Coffee", "price": 0.0},
+        {"label": "Early Check-in", "price": 500.0, "icon": Icons.access_time},
+        {"label": "Airport Pickup", "price": 1200.0, "icon": Icons.local_airport},
+        {"label": "Laundry Service", "price": 0.0, "icon": Icons.local_laundry_service},
+        {"label": "Meals (At Hotel)", "price": 0.0, "icon": Icons.restaurant},
       ];
     }
 
-    final List initialAddons = (widget.initialSelection['addons'] ?? []);
+    for (var opt in currentStayOptions) {
+      stayPreferenceSelected[opt] = (initial['stay_preference'] ?? []).contains(opt);
+    }
+    for (var opt in forYouOptions) {
+      forYouSelected[opt] = (initial['for_you'] ?? []).contains(opt);
+    }
     for (var a in addons) {
-      addonsSelected[a['label']] = initialAddons.contains(a['label']);
+      addonsSelected[a['label']] = (initial['addons'] ?? []).contains(a['label']);
     }
   }
 
-  double computeCustomizationPrice() {
+  double computePrice() {
     double total = 0.0;
-    for (var opt in type1Options) {
-      if (type1Selected[opt['label']] == true) total += opt['price'] as double;
-    }
-    for (var a in addons) {
-      if (addonsSelected[a['label']] == true) total += a['price'] as double;
-    }
+    addonsSelected.forEach((k, v) {
+      if (v) {
+        var match = addons.where((o) => o['label'] == k);
+        if (match.isNotEmpty) total += match.first['price'];
+      }
+    });
     return total;
   }
 
-  Widget _buildSectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-    );
+  Future<void> _handleSave() async {
+    final userEmail = widget.hotel?['user_email'] ?? widget.email ?? "";
+    if (userEmail.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Email not found"), backgroundColor: Colors.red));
+      return;
+    }
+
+    setState(() => isSaving = true);
+
+    final String selectedStayPref = stayPreferenceSelected.entries.where((e) => e.value).map((e) => e.key).join(", ");
+    final String selectedAddons = addonsSelected.entries.where((e) => e.value).map((e) => e.key).join(", ");
+    String forYouVal = forYouSelected.entries.where((e) => e.value).map((e) => e.key).join(", ");
+    if (forYouSelected['Other'] == true && _otherForYouController.text.isNotEmpty) {
+      forYouVal += " (${_otherForYouController.text})";
+    }
+
+    final Map<String, dynamic> dbData = {
+      "email": userEmail,
+      "stay_type": stayType,
+      "meal_preference": mealPreference,
+      "add_ons": selectedAddons,
+      "travel_style": travelStyle,
+      "stay_preference": selectedStayPref,
+      "for_you": forYouVal,
+      "location_preference": _locationController.text,
+      "budget_min": budgetRange.start.toInt(),
+      "budget_max": budgetRange.end.toInt()
+    };
+
+    try {
+      final response = await http.post(
+          Uri.parse('${ApiConfig.baseUrl}/customize'),
+          headers: {"Content-Type": "application/json"},
+          body: jsonEncode(dbData)
+      );
+
+      if (response.statusCode == 200) {
+        // Navigation logic placed to ensure it returns to the booking summary
+        if (mounted) {
+          Navigator.of(context).pop({
+            'travel_style': travelStyle,
+            'meal_preference': mealPreference,
+            'stay_preference': stayPreferenceSelected.entries.where((e) => e.value).map((e) => e.key).toList(),
+            'addons': addonsSelected.entries.where((e) => e.value).map((e) => e.key).toList(),
+            'location_preference': _locationController.text,
+            'customizationPrice': computePrice(),
+            'for_you': forYouVal,
+            'other_for_you_text': _otherForYouController.text,
+          });
+        }
+      } else {
+        throw Exception("Server error: ${response.statusCode}");
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => isSaving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final double spacing = 8.0;
-    final stayTypes = ['Family', 'Business', 'Vacation', 'Type4'];
+    double totalAddons = computePrice();
+    String noteText = stayType.toLowerCase().contains('resort')
+        ? "Note: Campfire, Pool Party, and dining charges are billed locally at the resort based on menu rates."
+        : "Note: Standard food and beverage charges are paid at the hotel based on the current menu.";
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Customize your stay'), backgroundColor: Colors.green, elevation: 1),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10),
-        child: Column(children: [
+      backgroundColor: Colors.grey[50],
+      appBar: AppBar(
+        title: Text(isProfileMode ? 'Personalize Profile' : 'Custom Stay Selection', style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF2E7D32),
+        elevation: 0,
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
           Expanded(
-            child: ListView(shrinkWrap: true, physics: const BouncingScrollPhysics(), children: [
-              _buildSectionTitle('Stay Type'),
-              GridView.count(
-                crossAxisCount: 2,
-                mainAxisSpacing: spacing,
-                crossAxisSpacing: spacing,
-                childAspectRatio: 3.8,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                children: stayTypes.map((t) {
-                  final selected = (stayType == t);
-                  return GestureDetector(
-                    onTap: () => setState(() => stayType = t),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: selected ? Colors.green.withOpacity(0.12) : Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: selected ? Colors.green : Colors.grey.shade300, width: selected ? 1.6 : 1),
-                        boxShadow: selected ? [BoxShadow(color: Colors.green.withOpacity(0.06), blurRadius: 6, offset: const Offset(0, 2))] : null,
-                      ),
-                      child: Row(children: [
-                        Radio<String>(value: t, groupValue: stayType, onChanged: (v) => setState(() => stayType = v!), materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact),
-                        const SizedBox(width: 4),
-                        Flexible(child: Text(t, style: const TextStyle(fontSize: 14))),
-                      ]),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 10),
-              _buildSectionTitle('Type1 Options'),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: type1Options.map((opt) {
-                  final lbl = opt['label'] as String;
-                  final price = opt['price'] as double;
-                  final checked = type1Selected[lbl] ?? false;
-                  return SizedBox(
-                    width: (MediaQuery.of(context).size.width - 48) / 2,
-                    child: Card(
-                      margin: EdgeInsets.zero,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      elevation: 0,
-                      child: CheckboxListTile(
-                        dense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                        value: checked,
-                        onChanged: (v) => setState(() => type1Selected[lbl] = v ?? false),
-                        title: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(lbl, style: const TextStyle(fontSize: 14)), Text('₹${price.toStringAsFixed(0)}', style: const TextStyle(fontSize: 13))]),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 8),
-              _buildSectionTitle('Add-ons'),
-              Column(children: addons.map((a) {
-                final key = a['label'] as String;
-                final price = a['price'] as double;
-                final checked = addonsSelected[key] ?? false;
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 6),
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)),
-                  child: CheckboxListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                    value: checked,
-                    onChanged: (v) => setState(() => addonsSelected[key] = v ?? false),
-                    title: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Flexible(child: Text(key, style: const TextStyle(fontSize: 14))), Text(price > 0 ? '₹${price.toStringAsFixed(0)}' : 'Menu-based', style: const TextStyle(fontSize: 13))]),
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              children: [
+                if (isProfileMode) _buildCard(Icons.payments, "Preferred Monthly Budget", [
+                  RangeSlider(
+                    values: budgetRange, min: 500, max: 20000, divisions: 39,
+                    activeColor: const Color(0xFF2E7D32),
+                    labels: RangeLabels("₹${budgetRange.start.toInt()}", "₹${budgetRange.end.toInt()}"),
+                    onChanged: (v) => setState(() => budgetRange = v),
                   ),
-                );
-              }).toList()),
-              const SizedBox(height: 8),
-              Text('Note: Menu and food prices to be paid separately at hotel.', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
-              const SizedBox(height: 16),
-            ]),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-            decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(8)),
-            child: Row(children: [
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Estimated customization', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 6),
-                  Text('₹${computeCustomizationPrice().toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                  Center(child: Text("Budget: ₹${budgetRange.start.toInt()} - ₹${budgetRange.end.toInt()}", style: const TextStyle(color: Colors.grey, fontSize: 12))),
                 ]),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  final selectedType1 = type1Selected.entries.where((e) => e.value).map((e) => e.key).toList();
-                  final selectedAddons = addonsSelected.entries.where((e) => e.value).map((e) => e.key).toList();
-                  final price = computeCustomizationPrice();
-                  final result = {'stayType': stayType, 'type1': selectedType1, 'addons': selectedAddons, 'customizationPrice': price};
-                  Navigator.pop(context, result);
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                child: const Text('Save', style: TextStyle(fontSize: 14)),
-              ),
-            ]),
-          )
-        ]),
+
+                _buildCard(Icons.kayaking, "Travel Style", [
+                  Wrap(spacing: 8, children: currentTravelOptions.map((t) => ChoiceChip(
+                    label: Text(t), selected: travelStyle == t,
+                    onSelected: (s) => setState(() => travelStyle = t),
+                    selectedColor: const Color(0xFFE8F5E9),
+                    labelStyle: TextStyle(color: travelStyle == t ? const Color(0xFF2E7D32) : Colors.black),
+                  )).toList()),
+                ]),
+
+                _buildCard(Icons.restaurant, "Meal Preference", [
+                  Wrap(spacing: 8, children: ['Veg only', 'Non-Veg', 'Any'].map((m) => ChoiceChip(
+                    label: Text(m), selected: mealPreference == m,
+                    onSelected: (s) => setState(() => mealPreference = m),
+                    selectedColor: const Color(0xFFE8F5E9),
+                  )).toList()),
+                ]),
+
+                _buildCard(Icons.bed, "Stay Preferences", [
+                  Wrap(spacing: 8, children: currentStayOptions.map((opt) => FilterChip(
+                    label: Text(opt), selected: stayPreferenceSelected[opt] ?? false,
+                    onSelected: (v) => setState(() => stayPreferenceSelected[opt] = v),
+                    selectedColor: const Color(0xFFE8F5E9),
+                  )).toList()),
+                ]),
+
+                _buildCard(Icons.auto_awesome, "For You", [
+                  Wrap(spacing: 8, children: forYouOptions.map((opt) => FilterChip(
+                    label: Text(opt), selected: forYouSelected[opt] ?? false,
+                    onSelected: (v) => setState(() => forYouSelected[opt] = v),
+                    selectedColor: const Color(0xFFE8F5E9),
+                  )).toList()),
+                  if (forYouSelected['Other'] == true)
+                    Padding(padding: const EdgeInsets.only(top: 8), child: TextField(controller: _otherForYouController, decoration: const InputDecoration(hintText: "Tell us more...", border: UnderlineInputBorder()))),
+                ]),
+
+                _buildCard(Icons.location_on, "Dream Locations", [
+                  TextField(controller: _locationController, decoration: const InputDecoration(hintText: "e.g. Goa, Manali, Ooty", border: InputBorder.none)),
+                ]),
+
+                if (!isProfileMode) _buildCard(Icons.add_task, "${stayType} Features & Add-ons", [
+                  ...addons.map((a) => CheckboxListTile(
+                    title: Text(a['label']), secondary: Icon(a['icon'], size: 20, color: const Color(0xFF2E7D32)),
+                    subtitle: Text("₹${a['price']}"), activeColor: const Color(0xFF2E7D32),
+                    value: addonsSelected[a['label']], dense: true,
+                    onChanged: (v) => setState(() => addonsSelected[a['label']] = v!),
+                  )),
+                  Padding(padding: const EdgeInsets.only(top: 12), child: Text(noteText, style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontStyle: FontStyle.italic))),
+                ]),
+              ],
+            ),
+          ),
+
+          // Price & Save Action Bar
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Row(
+              children: [
+                if (!isProfileMode) Expanded(child: Column(
+                  mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Add-on Total", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    Text("₹${totalAddons.toStringAsFixed(0)}", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32))),
+                  ],
+                )),
+                Expanded(flex: isProfileMode ? 2 : 1, child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E7D32),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      minimumSize: const Size(0, 50)
+                  ),
+                  onPressed: isSaving ? null : _handleSave,
+                  child: isSaving
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text("SAVE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                )),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard(IconData icon, String title, List<Widget> children) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 4))]
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [Icon(icon, size: 18, color: const Color(0xFF2E7D32)), const SizedBox(width: 8), Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14))]),
+            const SizedBox(height: 12),
+            ...children,
+          ],
+        ),
       ),
     );
   }

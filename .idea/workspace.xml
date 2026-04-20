@@ -6,10 +6,9 @@
   <component name="ChangeListManager">
     <list default="true" id="b3cc85d8-4294-490f-9bd6-972737d6cf1d" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/Customize_Preference_Page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/Customize_Preference_Page.dart" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/booking_function.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/booking_function.dart" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/booking_history_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/booking_history_page.dart" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/home_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/home_page.dart" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/pg_details_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/pg_details_page.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/profile.dart" beforeDir="false" afterPath="$PROJECT_DIR$/hotel_booking_app/lib/Screens/profile.dart" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
