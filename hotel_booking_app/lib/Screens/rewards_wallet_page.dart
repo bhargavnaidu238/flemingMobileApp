@@ -1,501 +1,422 @@
 import 'dart:convert';
-import 'package:hotel_booking_app/services/api_service.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:flutter/services.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:share_plus/share_plus.dart';
+import 'package:confetti/confetti.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:hotel_booking_app/services/api_service.dart';
 
 class RewardsWalletPage extends StatefulWidget {
-  final String email;
   final String userId;
-
-  final String walletBalance;
-  final String referralCode;
+  final String email;
+  final String? referralCode;
 
   const RewardsWalletPage({
     super.key,
-    required this.email,
     required this.userId,
-    this.walletBalance = "₹0.00",
-    this.referralCode = "REF-CODE",
+    required this.email,
+    this.referralCode,
   });
 
   @override
   State<RewardsWalletPage> createState() => _RewardsWalletPageState();
 }
 
-class WalletTransactionUi {
-  final String txnId;
-  final String walletId;
-  final String type;
-  final double amount;
-  final String direction;
-  final String status;
-  final String description;
-  final DateTime createdAt;
-
-  WalletTransactionUi({
-    required this.txnId,
-    required this.walletId,
-    required this.type,
-    required this.amount,
-    required this.direction,
-    required this.status,
-    required this.description,
-    required this.createdAt,
-  });
-}
-
-class RefundUi {
-  final String refundId;
-  final String txnId;
-  final double refundedAmount;
-  final String refundMethod;
-  final String status;
-  final DateTime createdAt;
-
-  RefundUi({
-    required this.refundId,
-    required this.txnId,
-    required this.refundedAmount,
-    required this.refundMethod,
-    required this.status,
-    required this.createdAt,
-  });
-}
-
-class CouponRuleUi {
-  final String ruleType;
-  final String ruleValue;
-
-  CouponRuleUi({required this.ruleType, required this.ruleValue});
-}
-
-class CouponUi {
-  final String couponId;
-  final String couponCode;
-  final String title;
-  final String description;
-  final String termsConditions;
-  final String discountType;
-  final double discountValue;
-  final double? maxDiscount;
-  final DateTime validFrom;
-  final DateTime validTo;
-  final int usageLimitPerUser;
-  final int usageCountByUser;
-  final double minOrderValue;
-  final String applicablePlatform;
-  final String status;
-  final List<CouponRuleUi> rules;
-
-  CouponUi({
-    required this.couponId,
-    required this.couponCode,
-    required this.title,
-    required this.description,
-    required this.termsConditions,
-    required this.discountType,
-    required this.discountValue,
-    required this.maxDiscount,
-    required this.validFrom,
-    required this.validTo,
-    required this.usageLimitPerUser,
-    required this.usageCountByUser,
-    required this.minOrderValue,
-    required this.applicablePlatform,
-    required this.status,
-    required this.rules,
-  });
-}
-
-///=============== REWARD PAGE SECTION
-class _RewardsWalletPageState extends State<RewardsWalletPage> {
-
+class _RewardsWalletPageState extends State<RewardsWalletPage> with TickerProviderStateMixin {
+  late ConfettiController _confettiController;
+  late TabController _tabController;
   bool _isLoading = true;
+  String? _errorMessage;
 
   double _walletBalance = 0.0;
-  String _referralCode = "";
-  int _successfulReferrals = 0;
-  double _referralRewards = 0.0;
-
-  List<WalletTransactionUi> _walletTransactions = [];
-  List<RefundUi> _refunds = [];
-  List<CouponUi> _coupons = [];
+  int _qualifiedReferrals = 0;
+  int _nextMilestoneGoal = 5;
+  List<dynamic> _coupons = [];
+  List<dynamic> _transactions = [];
+  List<dynamic> _refunds = [];
+  String _displayReferralCode = "";
 
   @override
   void initState() {
     super.initState();
-    _initializeData();
+    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    _tabController = TabController(length: 3, vsync: this);
+    _displayReferralCode = (widget.referralCode != null && widget.referralCode!.isNotEmpty)
+        ? widget.referralCode!
+        : "Loading...";
+    _fetchDbData();
   }
 
-  String _generateFallbackReferralCode(String userId) {
-    final base = "$userId|REFERRAL_SALT";
-    final hash = base.hashCode.abs();
-    final base36 = hash.toRadixString(36).toUpperCase();
-    final hashPart = base36.length > 5 ? base36.substring(0, 5) : base36;
-    final suffix = (hash % 1000).toString().padLeft(3, '0');
-    return "HB-$hashPart$suffix";
+  @override
+  void dispose() {
+    _confettiController.dispose();
+    _tabController.dispose();
+    super.dispose();
   }
 
-  Future<void> _initializeData() async {
-    setState(() => _isLoading = true);
+  Future<void> _fetchDbData() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     try {
-      final uri = Uri.parse(
-          "${ApiConfig.baseUrl}/wallet?userId=${Uri.encodeComponent(widget.userId)}");
+      final url = "${ApiConfig.baseUrl}/user-rewards-full?userId=${widget.userId.trim()}";
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
 
-      final response = await http.get(uri);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (mounted) {
+          setState(() {
+            _walletBalance = (data['wallet']?['balance'] as num?)?.toDouble() ?? 0.0;
+            var fetchedCode = data['referral_code'] ?? data['referralCode'];
+            if (fetchedCode != null && fetchedCode.toString().trim().isNotEmpty) {
+              _displayReferralCode = fetchedCode.toString().trim();
+            }
+            _coupons = data['coupons'] ?? [];
+            _transactions = data['transactions'] ?? [];
+            _refunds = data['refunds'] ?? [];
 
-      if (response.statusCode != 200) {
-        throw Exception("Failed to load wallet data: ${response.statusCode}");
+            final refStats = data['referral_stats'];
+            if (refStats != null) {
+              _qualifiedReferrals = (refStats['completed_count'] as num?)?.toInt() ?? 0;
+              _nextMilestoneGoal = (refStats['next_milestone'] as num?)?.toInt() ?? 5;
+            }
+            _isLoading = false;
+          });
+        }
+      } else {
+        throw Exception("Server Error: ${response.statusCode}");
       }
-
-      final data = json.decode(response.body) as Map<String, dynamic>;
-
-      // If backend didn't send walletExists, assume true (because backend auto-creates)
-      final bool walletExists = data["walletExists"] ?? true;
-
-      // Backend will create wallet if missing, so this is mostly for error fallback
-      if (!walletExists) {
-        setState(() {
-          _walletBalance = 0.0;
-          _referralCode = widget.referralCode != "REF-CODE"
-              ? widget.referralCode
-              : _generateFallbackReferralCode(widget.userId);
-          _successfulReferrals = 0;
-          _referralRewards = 0.0;
-          _walletTransactions = [];
-          _refunds = [];
-          _coupons = [];
-        });
-        return;
-      }
-
-      final String walletId = data["walletId"] ?? "";
-
-      // Wallet balance
-      _walletBalance = (data["balance"] as num?)?.toDouble() ?? 0.0;
-
-      // Referral
-      final backendReferral = (data["referralCode"] as String?)?.trim();
-      _referralCode = (backendReferral != null && backendReferral.isNotEmpty)
-          ? backendReferral
-          : (widget.referralCode != "REF-CODE"
-          ? widget.referralCode
-          : _generateFallbackReferralCode(widget.userId));
-
-      _successfulReferrals = data["referralCount"] ?? 0;
-      _referralRewards =
-          (data["referralEarnings"] as num?)?.toDouble() ?? 0.0;
-
-      // Transactions
-      final List<dynamic> txList =
-          data["transactions"] as List<dynamic>? ?? <dynamic>[];
-      _walletTransactions = txList.map((t) {
-        return WalletTransactionUi(
-          txnId: t["txnId"] as String,
-          walletId: walletId,
-          type: t["type"] as String,
-          amount: (t["amount"] as num).toDouble(),
-          direction: t["direction"] as String,
-          status: t["status"] as String,
-          description: t["description"] as String? ?? "",
-          createdAt: DateTime.parse(t["createdAt"] as String),
-        );
-      }).toList();
-
-      // Refunds
-      final List<dynamic> refundList =
-          data["refunds"] as List<dynamic>? ?? <dynamic>[];
-      _refunds = refundList.map((r) {
-        return RefundUi(
-          refundId: r["refundId"] as String,
-          txnId: r["txnId"] as String,
-          refundedAmount: (r["amount"] as num).toDouble(),
-          refundMethod: r["method"] as String,
-          status: r["status"] as String,
-          createdAt: DateTime.parse(
-            (r["createdAt"] as String?) ?? DateTime.now().toIso8601String(),
-          ),
-        );
-      }).toList();
-
-      // Coupons
-      final List<dynamic> couponList =
-          data["coupons"] as List<dynamic>? ?? <dynamic>[];
-      _coupons = couponList.map((c) {
-        final List<dynamic> rulesJson =
-            c["rules"] as List<dynamic>? ?? <dynamic>[];
-        final rules = rulesJson
-            .map((r) => CouponRuleUi(
-          ruleType: r["ruleType"] as String,
-          ruleValue: r["ruleValue"] as String,
-        ))
-            .toList();
-
-        return CouponUi(
-          couponId: c["couponId"] as String,
-          couponCode: c["couponCode"] as String,
-          title: c["title"] as String,
-          description: c["description"] as String? ?? "",
-          termsConditions: c["termsConditions"] as String? ?? "",
-          discountType: c["discountType"] as String,
-          discountValue: (c["discountValue"] as num).toDouble(),
-          maxDiscount: c["maxDiscount"] != null
-              ? (c["maxDiscount"] as num).toDouble()
-              : null,
-          validFrom: DateTime.parse(c["validFrom"] as String),
-          validTo: DateTime.parse(c["validTo"] as String),
-          usageLimitPerUser: c["usageLimitPerUser"] as int? ?? 1,
-          usageCountByUser: c["usageCountByUser"] as int? ?? 0,
-          minOrderValue:
-          (c["minOrderValue"] as num?)?.toDouble() ?? 0.0,
-          applicablePlatform:
-          c["applicablePlatform"] as String? ?? "all",
-          status: c["status"] as String? ?? "active",
-          rules: rules,
-        );
-      }).toList();
     } catch (e) {
-      debugPrint("Error loading wallet: $e");
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Failed to load wallet data: $e")),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _errorMessage = "Connection Error: Failed to sync wallet.";
+          if (_displayReferralCode == "Loading...") _displayReferralCode = "Offline";
+        });
       }
     }
   }
 
-  void _copyReferralCode() {
-    Clipboard.setData(ClipboardData(text: _referralCode));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Referral Code Copied!")),
-    );
-  }
-
-  void _shareReferralLink() {
-    Share.share(
-        "Use my referral code $_referralCode 🎉 Download now & earn rewards!");
-  }
-
-  // ------------------ UI ------------------
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: Colors.lime.shade50,
       appBar: AppBar(
-        title: const Text("Rewards & Wallets"),
-        backgroundColor: Colors.orange,
+        title: const Text("Rewards & Wallet", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: Colors.green.shade700,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _mainContent(),
-    );
-  }
-
-  Widget _mainContent() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Stack(
         children: [
-          _walletBalanceCard(),
-          const SizedBox(height: 15),
-          _couponSection(),
-          const SizedBox(height: 15),
-          _transactionSection(),
-          const SizedBox(height: 15),
-          _refundSection(),
-          const SizedBox(height: 15),
-          _referralSection(),
+          _isLoading
+              ? const Center(child: CircularProgressIndicator(color: Colors.green))
+              : _errorMessage != null
+              ? _buildErrorUI()
+              : _buildMainDashboard(),
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirectionality: BlastDirectionality.explosive,
+              shouldLoop: false,
+              colors: const [Colors.green, Colors.lime, Colors.orange, Colors.white],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _walletBalanceCard() => Container(
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      gradient: const LinearGradient(
-          colors: [Colors.orange, Colors.deepOrangeAccent]),
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: Row(
-      children: [
-        const Icon(FontAwesomeIcons.wallet,
-            color: Colors.white, size: 36),
-        const SizedBox(width: 16),
-        Text("₹${_walletBalance.toStringAsFixed(2)}",
-            style: const TextStyle(
-                fontSize: 28,
-                color: Colors.white,
-                fontWeight: FontWeight.bold)),
-      ],
-    ),
-  );
+  Widget _buildErrorUI() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.sync_problem, size: 60, color: Colors.green),
+          const SizedBox(height: 16),
+          Text(_errorMessage!, style: const TextStyle(fontWeight: FontWeight.w500)),
+          const SizedBox(height: 10),
+          ElevatedButton(
+            onPressed: _fetchDbData,
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text("Retry Now", style: TextStyle(color: Colors.white)),
+          )
+        ],
+      ),
+    );
+  }
 
-  Widget _couponSection() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const Text("Available Coupons",
-          style:
-          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-      if (_coupons.isEmpty)
-        const Padding(
-          padding: EdgeInsets.only(top: 4),
-          child: Text("No coupons available right now."),
+  Widget _buildMainDashboard() {
+    return RefreshIndicator(
+      onRefresh: _fetchDbData,
+      color: Colors.green,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          children: [
+            _buildWalletHeader(),
+            const SizedBox(height: 20),
+            _buildSectionHeader("Exclusive Coupons"),
+            _buildTicketCouponList(),
+            const SizedBox(height: 20),
+            _buildReferAndEarnCard(),
+            const SizedBox(height: 20),
+            _buildActivityTabs(),
+          ],
         ),
-      ..._coupons.map((c) => _couponTile(c)).toList()
-    ],
-  );
+      ),
+    );
+  }
 
-  Widget _couponTile(CouponUi coupon) => Container(
-    margin: const EdgeInsets.only(top: 10),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Colors.orange),
-    ),
-    child: Row(children: [
-      const Icon(Icons.local_offer, color: Colors.orange),
-      const SizedBox(width: 10),
-      Expanded(
-          child: Column(
+  Widget _buildWalletHeader() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [Colors.green.shade400, Colors.green.shade700]),
+        borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(40), bottomRight: Radius.circular(40)),
+      ),
+      child: Column(
+        children: [
+          const Text("Available Balance", style: TextStyle(color: Colors.white70, fontSize: 16)),
+          const SizedBox(height: 10),
+          Text("₹${_walletBalance.toStringAsFixed(2)}",
+              style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTicketCouponList() {
+    if (_coupons.isEmpty) return const Padding(padding: EdgeInsets.all(20), child: Text("Check back later for coupons!", style: TextStyle(color: Colors.grey)));
+    return SizedBox(
+      height: 170,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: _coupons.length,
+        itemBuilder: (context, index) {
+          final coupon = _coupons[index];
+          final expiry = DateTime.parse(coupon['valid_to'] ?? DateTime.now().toString());
+          bool isExpiring = expiry.difference(DateTime.now()).inHours < 24;
+
+          return Container(
+            width: 320,
+            margin: const EdgeInsets.only(right: 12, bottom: 10),
+            child: Stack(
+              children: [
+                Card(
+                  elevation: 5,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade600,
+                          borderRadius: const BorderRadius.only(topLeft: Radius.circular(15), bottomLeft: Radius.circular(15)),
+                        ),
+                        child: const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(FontAwesomeIcons.solidStar, color: Colors.white, size: 20),
+                            SizedBox(height: 10),
+                            RotatedBox(
+                              quarterTurns: 3,
+                              child: Text("OFFER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(coupon['title'] ?? "Special Deal", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)),
+                              const SizedBox(height: 5),
+                              Text(coupon['description'] ?? "", maxLines: 2, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                              const Spacer(),
+                              GestureDetector(
+                                onTap: () {
+                                  Clipboard.setData(ClipboardData(text: coupon['coupon_code']));
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Code Copied!")));
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(color: Colors.lime.shade100, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.green.shade200)),
+                                  child: Text(coupon['coupon_code'] ?? "", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isExpiring)
+                  Positioned(
+                    top: 10, right: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(8)),
+                      child: const Text("LIMITED", style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                    ),
+                  )
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildReferAndEarnCard() {
+    double progress = (_qualifiedReferrals / _nextMilestoneGoal).clamp(0.0, 1.0);
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.1), blurRadius: 15, offset: const Offset(0, 5))],
+      ),
+      child: Column(
+        children: [
+          Row(children: [const Icon(Icons.card_giftcard, color: Colors.green), const SizedBox(width: 10), Text("Refer & Earn Rewards", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green.shade900))]),
+          const SizedBox(height: 20),
+          LinearProgressIndicator(value: progress, color: Colors.green, backgroundColor: Colors.lime.shade50, minHeight: 10, borderRadius: BorderRadius.circular(10)),
+          const SizedBox(height: 10),
+          Text("Invite ${_nextMilestoneGoal - _qualifiedReferrals} more friends for reward!", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(_displayReferralCode, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: 1.5, color: Colors.green)),
+              IconButton(icon: const Icon(Icons.copy, color: Colors.green), onPressed: () {
+                if (_displayReferralCode != "Loading..." && _displayReferralCode != "Offline") {
+                  Clipboard.setData(ClipboardData(text: _displayReferralCode));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Code Copied!")));
+                }
+              })
+            ],
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              if (_displayReferralCode != "Loading..." && _displayReferralCode != "Offline") {
+                Share.share("Book with my code $_displayReferralCode 🏨\nhttps://hotelapp.link/dl");
+              }
+            },
+            icon: const Icon(Icons.share, color: Colors.white),
+            label: const Text("Invite Friends", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, minimumSize: const Size(double.infinity, 50), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActivityTabs() {
+    return Column(
+      children: [
+        TabBar(
+          controller: _tabController,
+          labelColor: Colors.green.shade800,
+          indicatorColor: Colors.green,
+          unselectedLabelColor: Colors.grey,
+          tabs: const [Tab(text: "All Activity"), Tab(text: "Credits"), Tab(text: "Refunds")],
+        ),
+        SizedBox(
+          height: 350,
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildTxnList(_transactions),
+              _buildTxnList(_transactions.where((t) => t['direction']?.toString().toLowerCase() == 'credit').toList()),
+              _buildRefundList(),
+            ],
+          ),
+        )
+      ],
+    );
+  }
+
+  Widget _buildTxnList(List<dynamic> list) {
+    if (list.isEmpty) return const Center(child: Text("No transactions yet.", style: TextStyle(color: Colors.grey)));
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: list.length,
+      itemBuilder: (context, index) {
+        final t = list[index];
+        bool isCredit = t['direction']?.toString().toLowerCase() == 'credit';
+        String status = t['status'] ?? "Success";
+
+        return Card(
+          elevation: 0, color: Colors.white, margin: const EdgeInsets.symmetric(vertical: 5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ListTile(
+            leading: Icon(isCredit ? Icons.add_circle_outline : Icons.remove_circle_outline,
+                color: isCredit ? Colors.green : Colors.red),
+            title: Text(t['description'] ?? "Transaction"),
+            subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(coupon.title,
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text("Code: ${coupon.couponCode}"),
-                Text(
-                  "Valid till: ${coupon.validTo.toLocal().toString().split(' ').first}",
-                  style: TextStyle(
-                      color: Colors.grey.shade700, fontSize: 12),
-                ),
-              ])),
-      ElevatedButton(
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content: Text(
-                      "Apply ${coupon.couponCode}: backend validation pending...")),
-            );
-          },
-          style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange),
-          child: const Text("Apply"))
-    ]),
-  );
-
-  Widget _transactionSection() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const Text("Wallet Transactions",
-          style:
-          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-      if (_walletTransactions.isEmpty)
-        const Padding(
-          padding: EdgeInsets.only(top: 4.0),
-          child: Text("No transactions yet."),
-        )
-      else
-        ..._walletTransactions.map((tx) => ListTile(
-          dense: true,
-          title: Text(tx.description),
-          subtitle: Text(
-            "${tx.type.toUpperCase()} • ${tx.createdAt.toLocal()}",
-            style: TextStyle(
-                color: Colors.grey.shade600, fontSize: 12),
-          ),
-          trailing: Text(
-            "${tx.direction == 'credit' ? '+' : '-'}₹${tx.amount.toStringAsFixed(2)}",
-            style: TextStyle(
-              color: tx.direction == "credit"
-                  ? Colors.green
-                  : Colors.redAccent,
-              fontWeight: FontWeight.bold,
+                Text(t['created_at']?.toString().split('.')[0] ?? ""),
+                const SizedBox(height: 2),
+                Text("Status: $status | Type: ${t['type'] ?? 'N/A'}",
+                    style: const TextStyle(fontSize: 10, color: Colors.blueGrey)),
+              ],
+            ),
+            trailing: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text("₹${(t['amount'] as num?)?.toStringAsFixed(2)}",
+                    style: TextStyle(fontWeight: FontWeight.bold, color: isCredit ? Colors.green : Colors.black87)),
+                Text("Bal: ₹${(t['balance_after_txn'] as num?)?.toStringAsFixed(2)}",
+                    style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              ],
             ),
           ),
-        ))
-    ],
-  );
+        );
+      },
+    );
+  }
 
-  Widget _refundSection() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const Text("Refunds",
-          style:
-          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-      if (_refunds.isEmpty)
-        const Padding(
-          padding: EdgeInsets.only(top: 4.0),
-          child: Text("No refunds processed yet."),
-        )
-      else
-        ..._refunds.map((r) => ListTile(
-          dense: true,
-          leading:
-          const Icon(Icons.refresh, color: Colors.blue),
-          title: Text(
-              "Refund ₹${r.refundedAmount.toStringAsFixed(2)}"),
-          subtitle: Text(
-              "Refund ID: ${r.refundId} for TXN: ${r.txnId}",
-              style: TextStyle(
-                  color: Colors.grey.shade600, fontSize: 12)),
-          trailing: Text(
-            r.status,
-            style: TextStyle(
-                color: r.status == "success"
-                    ? Colors.green
-                    : (r.status == "pending"
-                    ? Colors.orange
-                    : Colors.red)),
+  Widget _buildRefundList() {
+    if (_refunds.isEmpty) return const Center(child: Text("No refund history.", style: TextStyle(color: Colors.grey)));
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _refunds.length,
+      itemBuilder: (context, index) {
+        final r = _refunds[index];
+        return Card(
+          elevation: 0, color: Colors.white, margin: const EdgeInsets.symmetric(vertical: 5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ListTile(
+            leading: CircleAvatar(backgroundColor: Colors.blue.withOpacity(0.1), child: const Icon(Icons.refresh, color: Colors.blue, size: 20)),
+            title: Text("Refund: ${r['status']}"),
+            subtitle: Text("ID: ${r['refund_id']}"),
+            trailing: Text("₹${(r['refunded_amount'] as num?)?.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
-        ))
-    ],
-  );
+        );
+      },
+    );
+  }
 
-  Widget _referralSection() => Container(
-    padding: const EdgeInsets.all(16),
-    margin: const EdgeInsets.only(top: 16),
-    decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16)),
-    child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("Refer & Earn 🎁",
-              style: TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          Row(children: [
-            Text(_referralCode,
-                style: const TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.bold)),
-            const Spacer(),
-            IconButton(
-                onPressed: _copyReferralCode,
-                icon: const Icon(Icons.copy, color: Colors.orange))
-          ]),
-          const SizedBox(height: 8),
-          Text(
-            "Successful Referrals: $_successfulReferrals    •    Rewards: ₹${_referralRewards.toStringAsFixed(2)}",
-            style: const TextStyle(fontSize: 13),
-          ),
-          const SizedBox(height: 10),
-          ElevatedButton.icon(
-              onPressed: _shareReferralLink,
-              icon: const Icon(Icons.share),
-              label: const Text("Share Referral"),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  minimumSize: const Size(double.infinity, 45)))
-        ]),
-  );
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Align(alignment: Alignment.centerLeft, child: Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green.shade900))),
+    );
+  }
 }

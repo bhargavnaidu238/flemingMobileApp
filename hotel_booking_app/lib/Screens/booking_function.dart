@@ -384,15 +384,14 @@ class _BookingPageState extends State<BookingPage> {
               Radio<bool>(value: true, groupValue: wantsCustomization, activeColor: const Color(0xFF673AB7), onChanged: (v) async {
                 setState(() => wantsCustomization = v!);
 
-                // FIXED: Passing email and userId correctly from controllers/widget
                 final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
                         builder: (context) => CustomizationPage(
                           hotel: hotel,
                           initialSelection: customizationSelection,
-                          email: emailController.text.trim(), // Passing email from form
-                          userId: widget.userId,             // Passing userId from widget
+                          email: emailController.text.trim(),
+                          userId: widget.userId,
                         )
                     )
                 );
@@ -475,14 +474,13 @@ class _BookingPageState extends State<BookingPage> {
       "original_total_price": totalAmount.toStringAsFixed(2),
       "amount_paid_online": totalAmount.toStringAsFixed(2),
       "due_amount_at_hotel": "0.0",
-      "wallet_amount": "0.0",
+      "wallet_amount_deducted": 0.0, // Aligned with backend key
       "wallet_used": "No",
-      "coupon_discount_amount": "0.0",
+      "coupon_discount_amount": 0.0,
       "coupon_code": "",
       "gst": gst.toStringAsFixed(2),
       "last_payment_record_id": "",
       "room_type": fullRoomDesc,
-      // Adding new Customization data to bookingData
       "travel_style": customizationSelection['travel_style'] ?? "",
       "meal_preference": customizationSelection['meal_preference'] ?? "",
       "stay_preference": (customizationSelection['stay_preference'] as List?)?.join(", ") ?? "",
@@ -563,7 +561,12 @@ class _BookingPageState extends State<BookingPage> {
               icon: const Icon(Icons.payment, color: Colors.white),
               label: const Text("Proceed to Payment", style: TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(backgroundColor: primaryGreen, padding: const EdgeInsets.symmetric(vertical: 12)),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => HotelPaymentPage(bookingData: bookingData)))
+              onPressed: () {
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => HotelPaymentPage(bookingData: bookingData))
+                );
+              }
           ),
         ),
         const SizedBox(width: 12),

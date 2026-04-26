@@ -158,7 +158,7 @@ class ApiService {
     }
   }
 
-  /// ================= REGISTER =================
+  /// ================= REGISTER (UPDATED FOR REFERRALS) =================
   static Future<bool> registerUser({
     required String email,
     required String firstName,
@@ -168,6 +168,7 @@ class ApiService {
     required String address,
     required String password,
     required String consent,
+    String? referredBy, // New Optional Parameter
   }) async {
     final url = Uri.parse('${ApiConfig.baseUrl}/register');
     final body = jsonEncode({
@@ -179,6 +180,7 @@ class ApiService {
       'address': address,
       'password': password,
       'consent': consent,
+      'referred_by': referredBy, // Matches backend logic
     });
 
     try {
@@ -187,7 +189,7 @@ class ApiService {
         headers: {'Content-Type': 'application/json'},
         body: body,
       );
-      return response.statusCode == 200;
+      return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
       debugPrint('Register Error: $e');
       return false;

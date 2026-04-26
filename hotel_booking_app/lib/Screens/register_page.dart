@@ -18,12 +18,13 @@ class _RegisterPageState extends State<RegisterPage> {
   final passwordController = TextEditingController();
   final addressController = TextEditingController();
   final otpController = TextEditingController();
+  final referralCodeController = TextEditingController(); // Optional Field
 
   // Logic States
   bool isOtpSent = false;
   bool isOtpVerified = false;
   int _resendTimerSeconds = 60;
-  int _expiryTimerSeconds = 120; // 2 Minutes
+  int _expiryTimerSeconds = 120;
   int _otpAttemptsToday = 0;
   Timer? _timer;
 
@@ -67,6 +68,7 @@ class _RegisterPageState extends State<RegisterPage> {
     passwordController.dispose();
     addressController.dispose();
     otpController.dispose();
+    referralCodeController.dispose();
     super.dispose();
   }
 
@@ -93,7 +95,7 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     if (emailEmpty || firstNameEmpty || lastNameEmpty || mobileEmpty || passwordEmpty || addressEmpty) {
-      _showMessage(context, "Please fill all the fields");
+      _showMessage(context, "Please fill all required fields");
       return false;
     }
 
@@ -115,7 +117,6 @@ class _RegisterPageState extends State<RegisterPage> {
     return true;
   }
 
-  // Step 1: Request OTP
   Future<void> _handleNext() async {
     if (!_validateInputs()) return;
 
@@ -140,7 +141,6 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  // Step 2: Verify OTP
   Future<void> _handleVerifyOtp(String otp) async {
     if (otp.length != 6) return;
 
@@ -154,15 +154,16 @@ class _RegisterPageState extends State<RegisterPage> {
       _timer?.cancel();
       _showMessage(context, "OTP Verified Successfully", isSuccess: true);
     } else {
-      // Clear controller only on failure to let user retry
       otpController.clear();
-      _showMessage(context, "Enter Wrong OTP Please try again.");
+      _showMessage(context, "Wrong OTP. Please try again.");
     }
   }
 
-  // Step 3: Register
   Future<void> _register() async {
     String mobile = "+${countryCodeController.text.trim()}-${mobileController.text.trim()}";
+    String? referralCode = referralCodeController.text.trim().isEmpty
+        ? null
+        : referralCodeController.text.trim().toUpperCase();
 
     final success = await ApiService.registerUser(
       email: emailController.text.toLowerCase().trim(),
@@ -173,13 +174,14 @@ class _RegisterPageState extends State<RegisterPage> {
       address: addressController.text.trim(),
       password: passwordController.text.trim(),
       consent: isConsentGiven ? "Yes" : "No",
+      referredBy: referralCode, // Optional: Passed as null if empty
     );
 
     if (success) {
       _showMessage(context, "Registration Successful!", isSuccess: true);
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginPage()));
     } else {
-      _showMessage(context, "Registration Failed. Please check your network.");
+      _showMessage(context, "Registration Failed. Check details or Referral Code.");
     }
   }
 
@@ -218,10 +220,6 @@ class _RegisterPageState extends State<RegisterPage> {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
-      ),
-      disabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Colors.grey),
       ),
     );
   }
@@ -273,6 +271,15 @@ class _RegisterPageState extends State<RegisterPage> {
               TextField(controller: addressController, decoration: _inputDecoration('Address', addressEmpty), enabled: !isOtpSent),
               const SizedBox(height: 8),
               TextField(controller: passwordController, decoration: _inputDecoration('Password', passwordEmpty), obscureText: true, enabled: !isOtpSent),
+              const SizedBox(height: 8),
+
+              // Referral Code (Optional Field)
+              TextField(
+                controller: referralCodeController,
+                decoration: _inputDecoration('Referral Code (Optional)', false),
+                enabled: !isOtpSent,
+                textCapitalization: TextCapitalization.characters,
+              ),
 
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
@@ -296,7 +303,6 @@ class _RegisterPageState extends State<RegisterPage> {
                   textAlign: TextAlign.center,
                   style: const TextStyle(letterSpacing: 8, fontWeight: FontWeight.bold),
                   onChanged: (val) {
-                    // We call the verification logic only when exactly 6 digits are typed
                     if (val.trim().length == 6) {
                       _handleVerifyOtp(val.trim());
                     }
