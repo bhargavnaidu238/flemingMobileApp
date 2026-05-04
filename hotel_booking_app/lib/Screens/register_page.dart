@@ -18,7 +18,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final passwordController = TextEditingController();
   final addressController = TextEditingController();
   final otpController = TextEditingController();
-  final referralCodeController = TextEditingController(); // Optional Field
+  final referralCodeController = TextEditingController();
 
   // Logic States
   bool isOtpSent = false;
@@ -174,7 +174,7 @@ class _RegisterPageState extends State<RegisterPage> {
       address: addressController.text.trim(),
       password: passwordController.text.trim(),
       consent: isConsentGiven ? "Yes" : "No",
-      referredBy: referralCode, // Optional: Passed as null if empty
+      referredBy: referralCode,
     );
 
     if (success) {
@@ -272,8 +272,6 @@ class _RegisterPageState extends State<RegisterPage> {
               const SizedBox(height: 8),
               TextField(controller: passwordController, decoration: _inputDecoration('Password', passwordEmpty), obscureText: true, enabled: !isOtpSent),
               const SizedBox(height: 8),
-
-              // Referral Code (Optional Field)
               TextField(
                 controller: referralCodeController,
                 decoration: _inputDecoration('Referral Code (Optional)', false),

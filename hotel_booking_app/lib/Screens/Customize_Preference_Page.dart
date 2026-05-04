@@ -59,8 +59,6 @@ class _CustomizationPageState extends State<CustomizationPage> {
 
     stayType = (widget.hotel?['Hotel_Type'] ?? widget.hotel?['HotelType'] ?? "Hotel").toString();
     final hTypeLower = stayType.toLowerCase();
-
-    // Setup Options based on Category
     if (isProfileMode) {
       currentTravelOptions = ['Family', 'Business', 'Vacation', 'Solo Traveller', 'Leisure'];
       currentStayOptions = ['Sea View', 'Hill Stays', 'Sky View', 'City View', 'Forest Stay'];
@@ -145,7 +143,6 @@ class _CustomizationPageState extends State<CustomizationPage> {
       );
 
       if (response.statusCode == 200) {
-        // Navigation logic placed to ensure it returns to the booking summary
         if (mounted) {
           Navigator.of(context).pop({
             'travel_style': travelStyle,
@@ -250,8 +247,6 @@ class _CustomizationPageState extends State<CustomizationPage> {
               ],
             ),
           ),
-
-          // Price & Save Action Bar
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(

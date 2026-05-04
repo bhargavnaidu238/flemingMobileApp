@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:hotel_booking_app/services/api_service.dart';
-import 'package:geolocator/geolocator.dart'; // Added for GPS detection
-import 'app_filters.dart' as app_filters; // Added for location helpers
+import 'package:geolocator/geolocator.dart';
+import 'app_filters.dart' as app_filters;
 
 class HomePage extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -21,8 +21,6 @@ class _HomePageState extends State<HomePage> {
   final double _bannerHeight = 190;
 
   bool _isLoading = false;
-
-  // Persistent Location Variables
   String currentCity = "Detecting...";
   double? userLat;
   double? userLng;
@@ -122,10 +120,8 @@ class _HomePageState extends State<HomePage> {
     _bannerController = PageController();
     _autoSlideBanners();
     _initUser();
-    _initLocation(); // Automatically detect location on start
+    _initLocation();
   }
-
-  // Detect location once on home screen
   Future<void> _initLocation() async {
     Position? pos = await app_filters.getCurrentCoordinates();
     if (pos != null) {

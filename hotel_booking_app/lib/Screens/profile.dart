@@ -770,7 +770,7 @@ class AboutUsPage extends StatelessWidget {
 
               const Center(
                 child: Text(
-                  "© 2025 Your Company Name Pvt. Ltd.\n"
+                  "© 2025 Flemingo Stays Pvt. Ltd.\n"
                       "All rights reserved. Unauthorized reproduction or distribution "
                       "is prohibited.",
                   textAlign: TextAlign.center,

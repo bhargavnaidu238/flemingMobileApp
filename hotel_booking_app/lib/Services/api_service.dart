@@ -168,7 +168,7 @@ class ApiService {
     required String address,
     required String password,
     required String consent,
-    String? referredBy, // New Optional Parameter
+    String? referredBy,
   }) async {
     final url = Uri.parse('${ApiConfig.baseUrl}/register');
     final body = jsonEncode({
@@ -180,7 +180,7 @@ class ApiService {
       'address': address,
       'password': password,
       'consent': consent,
-      'referred_by': referredBy, // Matches backend logic
+      'referred_by': referredBy,
     });
 
     try {

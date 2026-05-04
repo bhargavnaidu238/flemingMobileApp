@@ -76,9 +76,6 @@ class _ReviewsPageState extends State<ReviewsPage> {
     try {
       final String hotelId = widget.arguments['hotel_id'].toString();
 
-      // Note: ReviewApiService needs to be updated to accept offset/limit
-      // For now, we simulate the offset. Ensure your ReviewApiService.fetchReviews
-      // sends these params to your Java backend.
       final List<dynamic> data = await ReviewApiService.fetchReviews(
           hotelId,
           offset: currentOffset,
@@ -179,7 +176,6 @@ class _ReviewsPageState extends State<ReviewsPage> {
     final String hotelId = widget.arguments['hotel_id'].toString();
     final String userId = ApiService.getUserId() ?? '';
 
-    // Logic for duplicate handling
     final dynamic response = await ReviewApiService.submitReviewWithResponse(
       hotelId: hotelId,
       userId: userId,
@@ -190,7 +186,7 @@ class _ReviewsPageState extends State<ReviewsPage> {
     if (response == true) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Review submitted successfully!")));
-      _fetchInitialReviews(); // Reset and reload
+      _fetchInitialReviews();
     } else if (response == "duplicate") {
       _showErrorDialog("Already Reviewed", "You have already provided the review. Please delete the previous review in order to give new feedback.");
     } else {
@@ -224,7 +220,6 @@ class _ReviewsPageState extends State<ReviewsPage> {
       ),
       body: Column(
         children: [
-          // Header Container (Filters)
           Container(
             padding: const EdgeInsets.all(16),
             color: Colors.white,

@@ -30,7 +30,6 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
   String? _appliedCouponCode;
   String? _couponMessage;
   bool _couponValid = false;
-  bool _isCashbackCoupon = false;
 
   double _walletBalance = 0.0;
   double _walletMaxUsable = 0.0;
@@ -63,7 +62,7 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
     if (rawTotal is num) {
       parsed = rawTotal.toDouble();
     } else if (rawTotal is String) {
-      parsed = double.tryParse(rawTotal.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0;
+      parsed = double.tryParse(rawTotal) ?? 0.0;
     }
     _baseTotal = parsed;
     _payableAfterCoupon = _baseTotal;
@@ -73,36 +72,14 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
   // ---- RAZORPAY HANDLERS ----
 
   void _handlePaymentSuccess(PaymentSuccessResponse response) {
-    // 1. Immediately hide the processing indicator in our app
-    setState(() => _isProcessing = false);
-
-    // 2. CRITICAL: Do the heavy lifting in a microtask or with a delay
-    // to allow the Razorpay Modal to close first. This prevents the "Something went wrong" UI crash.
-    Future.delayed(Duration.zero, () {
-      _confirmPayment("Online",
-          gatePaymentId: response.paymentId,
-          gateOrderId: response.orderId,
-          gateSignature: response.signature);
-    });
+    _confirmPayment("Online",
+        gatePaymentId: response.paymentId,
+        gateOrderId: response.orderId,
+        gateSignature: response.signature);
   }
 
-  void _handlePaymentError(PaymentFailureResponse response) async {
+  void _handlePaymentError(PaymentFailureResponse response) {
     setState(() => _isProcessing = false);
-    if (useWallet && _walletUsed > 0) {
-      try {
-        await http.post(
-          Uri.parse('${ApiConfig.baseUrl}/rollbackWallet'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            "user_id": widget.bookingData['user_id'],
-            "amount": _walletUsed,
-            "booking_id": "FAILED_ATTEMPT"
-          }),
-        );
-      } catch (e) {
-        debugPrint("Rollback error: $e");
-      }
-    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("Payment Failed: ${response.message}")),
     );
@@ -111,6 +88,7 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
   void _handleExternalWallet(ExternalWalletResponse response) {}
 
   // ---- GATEWAY START ----
+
   Future<void> _startRazorpayCheckout() async {
     setState(() => _isProcessing = true);
     try {
@@ -121,12 +99,13 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
         body: jsonEncode({
           "amount": (_finalPayable * 100).toInt(),
           "currency": "INR",
-          "userId": widget.bookingData['user_id'],
+          "userId": widget.bookingData['user_id'], // Corrected key case
         }),
       );
 
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
+
         _lastPaymentRecordId = data['payment_record_id'];
 
         var options = {
@@ -139,8 +118,6 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
             'contact': widget.bookingData['mobile'] ?? '',
             'email': widget.bookingData['email'] ?? ''
           },
-          'timeout': 300, // 5 minutes
-          'retry': {'enabled': false}, // Prevent state looping errors
         };
         _razorpay.open(options);
       } else {
@@ -160,13 +137,11 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
     final userId = (widget.bookingData['user_id'] ?? '').toString().trim();
     if (userId.isEmpty) return;
     try {
-      final uri = Uri.parse("${ApiConfig.baseUrl}/getWalletBalance?user_id=${Uri.encodeComponent(userId)}");
+      final uri = Uri.parse("${ApiConfig.baseUrl}/wallet?userId=${Uri.encodeComponent(userId)}");
       final resp = await http.get(uri).timeout(const Duration(seconds: 15));
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
-        setState(() {
-          _walletBalance = (data["balance"] as num?)?.toDouble() ?? 0.0;
-        });
+        setState(() => _walletBalance = (data["balance"] as num?)?.toDouble() ?? 0.0);
         _recalculateWalletUsage();
       }
     } catch (e) {
@@ -175,121 +150,60 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
   }
 
   void _recalculateWalletUsage() {
-    final maxTotalReductionAllowed = _baseTotal * 0.4;
-    double quotaRemainingAfterCoupon = maxTotalReductionAllowed - _couponDiscount;
-    if (quotaRemainingAfterCoupon < 0) quotaRemainingAfterCoupon = 0;
-    _walletMaxUsable = (_walletBalance < quotaRemainingAfterCoupon)
-        ? _walletBalance
-        : quotaRemainingAfterCoupon;
-
+    final amountAfterCoupon = _payableAfterCoupon;
+    final fiftyPercent = amountAfterCoupon * 0.5;
+    _walletMaxUsable = (_walletBalance < fiftyPercent) ? _walletBalance : fiftyPercent;
     double walletUse = 0.0;
-    if (useWallet && _baseTotal > 0) {
+    if (useWallet && amountAfterCoupon > 0) {
       walletUse = _walletMaxUsable;
+      if ((amountAfterCoupon - walletUse) < 1.0) {
+        walletUse = (amountAfterCoupon - 1.0).clamp(0.0, _walletMaxUsable);
+      }
     }
-
     setState(() {
       _walletUsed = walletUse;
-      _payableAfterCoupon = _baseTotal - _couponDiscount;
-      _finalPayable = (_baseTotal - _couponDiscount - _walletUsed).clamp(0.0, double.infinity);
+      _finalPayable = (amountAfterCoupon - walletUse).clamp(0.0, double.infinity);
     });
-  }
-
-  void _removeCoupon() {
-    setState(() {
-      couponController.clear();
-      _couponDiscount = 0.0;
-      _isCashbackCoupon = false;
-      _appliedCouponCode = null;
-      _couponMessage = null;
-      _couponValid = false;
-    });
-    _recalculateWalletUsage();
   }
 
   Future<void> _applyCoupon() async {
-    final code = couponController.text.trim().toUpperCase();
-    final userId = (widget.bookingData['user_id'] ?? '').toString();
-    if (code.isEmpty) return;
-
+    final code = couponController.text.trim();
+    final userId = (widget.bookingData['user_id'] ?? '').toString().trim();
+    if (code.isEmpty || userId.isEmpty) return;
     try {
-      final uri = Uri.parse('${ApiConfig.baseUrl}/validateCoupon?code=${Uri.encodeComponent(code)}&user_id=$userId');
-      final resp = await http.get(uri);
-
+      final uri = Uri.parse('${ApiConfig.baseUrl}/coupon/validate');
+      final body = jsonEncode({"userId": userId, "couponCode": code, "baseAmount": _baseTotal});
+      final resp = await http.post(uri, headers: {"Content-Type": "application/json"}, body: body);
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
-        final double minOrder = (data["min_order_value"] as num).toDouble();
-        final double discVal = (data["discount_value"] as num).toDouble();
-        final String type = data["discount_type"] ?? "flat";
-
-        if (_baseTotal < minOrder) {
-          setState(() {
-            _couponValid = false;
-            _couponMessage = "Minimum order ₹$minOrder required";
-          });
-        } else if (type == "cashback") {
-          setState(() {
-            _couponValid = true;
-            _couponDiscount = 0.0;
-            _isCashbackCoupon = true;
-            _appliedCouponCode = code;
-            _couponMessage = "Cashback coupon applied!";
-          });
-        } else {
-          double calculatedDiscount = 0.0;
-          if (type == "percentage") {
-            calculatedDiscount = (_baseTotal * discVal) / 100;
-            double maxD = (data["max_discount"] as num).toDouble();
-            if (calculatedDiscount > maxD) calculatedDiscount = maxD;
-          } else {
-            calculatedDiscount = discVal;
-          }
-          double maxCap = _baseTotal * 0.4;
-          if (calculatedDiscount > maxCap) {
-            calculatedDiscount = maxCap;
-            _couponMessage = "Applied (Capped at 40%)";
-          } else {
-            _couponMessage = "Coupon Applied!";
-          }
-          setState(() {
-            _couponValid = true;
-            _couponDiscount = calculatedDiscount;
-            _isCashbackCoupon = false;
-            _appliedCouponCode = code;
-          });
-        }
-      } else {
+        final bool valid = data["valid"]?.toString() == "true";
         setState(() {
-          _couponValid = false;
-          _couponMessage = "Invalid Coupon";
-          _couponDiscount = 0.0;
+          _couponValid = valid;
+          _couponDiscount = valid ? (data["discountAmount"] as num).toDouble() : 0.0;
+          _payableAfterCoupon = valid ? (data["discountedAmount"] as num).toDouble() : _baseTotal;
+          _appliedCouponCode = valid ? code : null;
+          _couponMessage = data["message"] ?? (valid ? "Applied" : "Invalid");
         });
+        _recalculateWalletUsage();
       }
-      _recalculateWalletUsage();
     } catch (e) {
       debugPrint("Coupon error: $e");
     }
   }
 
-  // ---- FINAL BOOKING CONFIRMATION ----
+  // ---- FINAL BOOKING CONFIRMATION & VERIFICATION ----
+
   Future<void> _confirmPayment(String paymentType,
       {String? gatePaymentId, String? gateOrderId, String? gateSignature}) async {
     if (_bookingPosted) return;
-
-    // We don't block UI with _isProcessing here if coming from Success callback
-    // to keep the transition smooth.
+    setState(() => _isProcessing = true);
 
     final booking = Map<String, dynamic>.from(widget.bookingData);
-    final bool isOnline = (paymentType == "Online");
+    final bool isPayAtHotel = (paymentType == "Pay at Hotel");
 
     booking["last_payment_record_id"] = _lastPaymentRecordId ?? "";
-    booking["total_price"] = _baseTotal;
-    booking["final_payable_amount"] = _finalPayable;
-    booking["wallet_used"] = (useWallet && _walletUsed > 0) ? "Yes" : "No";
-    booking["wallet_amount_deducted"] = _walletUsed;
-    booking["coupon_code"] = _appliedCouponCode ?? "";
-    booking["coupon_discount_amount"] = _couponDiscount;
 
-    if (!isOnline) {
+    if (isPayAtHotel) {
       booking["amount_paid_online"] = 0.0;
       booking["due_amount_at_hotel"] = _finalPayable;
       booking["payment_method_type"] = "Offline";
@@ -297,6 +211,11 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
       booking["transaction_id"] = "NA";
       booking["payment_status"] = "PENDING";
       booking["booking_status"] = "PENDING";
+      booking["final_payable_amount"] = _finalPayable;
+      booking["wallet_used"] = false;
+      booking["wallet_amount_deducted"] = 0.0;
+      booking["coupon_code"] = "";
+      booking["coupon_discount_amount"] = 0.0;
     } else {
       booking["amount_paid_online"] = _finalPayable;
       booking["due_amount_at_hotel"] = 0.0;
@@ -305,10 +224,16 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
       booking["transaction_id"] = gatePaymentId ?? "";
       booking["payment_status"] = "PAID";
       booking["booking_status"] = "CONFIRMED";
+      booking["final_payable_amount"] = _finalPayable;
+      booking["wallet_used"] = useWallet;
+      booking["wallet_amount_deducted"] = _walletUsed;
+      booking["coupon_code"] = _appliedCouponCode ?? "";
+      booking["coupon_discount_amount"] = _couponDiscount;
     }
 
+    booking["total_price"] = _baseTotal;
+
     try {
-      // 1. Post Booking
       final uri = Uri.parse('${ApiConfig.baseUrl}/booking');
       final resp = await http.post(
           uri,
@@ -317,44 +242,45 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
       );
 
       if (resp.statusCode == 200) {
-        final bookingResp = jsonDecode(resp.body);
-        final String serverBookingId = bookingResp['booking_id'];
+        final result = jsonDecode(resp.body);
+        final String assignedBookingId = result["booking_id"] ?? booking["booking_id"] ?? "";
 
-        // 2. Post Verification (background)
-        if (isOnline) {
-          http.post(
-            Uri.parse('${ApiConfig.baseUrl}/payment/verify'),
+        if (!isPayAtHotel) {
+          final verifyUri = Uri.parse('${ApiConfig.baseUrl}/payment/verify');
+          await http.post(
+            verifyUri,
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              "booking_id": serverBookingId,
+              "booking_id": assignedBookingId,
               "user_id": booking["user_id"],
               "partner_id": booking["partner_id"],
               "hotel_id": booking["hotel_id"],
+              "payment_record_id": _lastPaymentRecordId,
               "gateway_order_id": gateOrderId,
               "gateway_payment_id": gatePaymentId,
               "gateway_signature": gateSignature,
-              "payment_record_id": _lastPaymentRecordId,
               "final_payable_amount": _finalPayable,
             }),
           );
         }
 
         _bookingPosted = true;
-        // Move to history immediately
-        if (mounted) {
-          Navigator.pushReplacementNamed(
-            context,
-            '/history',
-            arguments: {'email': booking['email'], 'userId': booking['user_id']},
-          );
-        }
+        Navigator.pushReplacementNamed(
+          context,
+          '/history',
+          arguments: {'email': booking['email'], 'userId': booking['user_id']},
+        );
+      } else {
+        throw "Save Failed: ${resp.body}";
       }
     } catch (e) {
-      debugPrint("Silent Error during confirm: $e");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      setState(() => _isProcessing = false);
     }
   }
 
-  // ---- UI COMPONENTS (STRICTLY NO DESIGN CHANGES) ----
+  // ---- UI COMPONENTS ----
+
   Widget _buildBookingSummary(Map booking) {
     return Container(
       decoration: BoxDecoration(
@@ -381,13 +307,8 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
             child: Column(
               children: [
                 _priceRow("Base Amount", _baseTotal, Colors.white),
-                if (_couponDiscount > 0) _priceRow("Coupon Discount", -_couponDiscount, Colors.lightGreenAccent),
-                if (_isCashbackCoupon)
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    const Text("Cashback", style: TextStyle(color: Colors.lightBlueAccent)),
-                    Text("${booking['coupon_code'] ?? 'Applied'}", style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 10)),
-                  ]),
-                if (_walletUsed > 0) _priceRow("Wallet Used", -_walletUsed, Colors.amberAccent),
+                _priceRow("Coupon Discount", -_couponDiscount, _couponDiscount > 0 ? Colors.lightGreenAccent : Colors.white),
+                _priceRow("Wallet Used", -_walletUsed, _walletUsed > 0 ? Colors.amberAccent : Colors.white),
                 const Divider(color: Colors.white54),
                 _priceRow("Final Payable", _finalPayable, Colors.white, isBold: true),
               ],
@@ -399,10 +320,13 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
   }
 
   Widget _priceRow(String label, double amount, Color color, {bool isBold = false}) {
-    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-      Text(label, style: TextStyle(color: color, fontWeight: isBold ? FontWeight.bold : FontWeight.w500)),
-      Text("₹${amount.toStringAsFixed(2)}", style: TextStyle(color: color, fontWeight: isBold ? FontWeight.bold : FontWeight.w500)),
-    ]);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(color: color, fontWeight: isBold ? FontWeight.bold : FontWeight.w500)),
+        Text("₹${amount.toStringAsFixed(2)}", style: TextStyle(color: color, fontWeight: isBold ? FontWeight.bold : FontWeight.w500)),
+      ],
+    );
   }
 
   Widget _infoItem(IconData icon, String label, String value, Color textColor) {
@@ -414,7 +338,6 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
 
   @override
   Widget build(BuildContext context) {
-    bool hasAnyDiscount = _couponDiscount > 0 || useWallet || _isCashbackCoupon;
     return Scaffold(
       appBar: AppBar(title: const Text("Confirm Payment"), backgroundColor: Colors.green),
       body: _isProcessing
@@ -430,83 +353,43 @@ class _HotelPaymentPageState extends State<HotelPaymentPage> {
             const SizedBox(height: 8),
             TextField(
               controller: couponController,
-              onChanged: (val) {
-                if (val != val.toUpperCase()) {
-                  couponController.value = couponController.value.copyWith(
-                    text: val.toUpperCase(),
-                    selection: TextSelection.collapsed(offset: val.length),
-                  );
-                }
-              },
               decoration: InputDecoration(
                 hintText: "Enter coupon code",
-                filled: true, fillColor: Colors.grey.shade100,
+                filled: true,
+                fillColor: Colors.grey.shade100,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                suffixIcon: _appliedCouponCode != null
-                    ? IconButton(icon: const Icon(Icons.cancel, color: Colors.red), onPressed: _removeCoupon)
-                    : TextButton(onPressed: _applyCoupon, child: const Text("Apply")),
+                suffixIcon: TextButton(onPressed: _applyCoupon, child: const Text("Apply")),
               ),
             ),
-            if (_couponMessage != null) Padding(
-              padding: const EdgeInsets.only(top: 4.0),
-              child: Text(_couponMessage!, style: TextStyle(color: _couponValid ? Colors.green : Colors.red, fontSize: 13)),
-            ),
+            if (_couponMessage != null) Text(_couponMessage!, style: TextStyle(color: _couponValid ? Colors.green : Colors.red, fontSize: 13)),
             const SizedBox(height: 20),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade200)),
-              child: Column(
-                children: [
-                  Row(children: [
-                    Checkbox(
-                        value: useWallet, activeColor: Colors.green,
-                        onChanged: (_walletMaxUsable > 0) ? (v) {
-                          setState(() => useWallet = v ?? false);
-                          _recalculateWalletUsage();
-                        } : null
-                    ),
-                    Expanded(child: Text("Use Wallet (Available: ₹${_walletBalance.toStringAsFixed(2)})", style: const TextStyle(fontSize: 14))),
-                  ]),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 48.0, bottom: 8.0),
-                    child: Text("Max usable for this booking: ₹${_walletMaxUsable.toStringAsFixed(2)} (40% limit)",
-                      style: TextStyle(fontSize: 12, color: Colors.blue.shade800, fontStyle: FontStyle.italic),
-                    ),
-                  )
-                ],
-              ),
-            ),
+            Row(children: [
+              Checkbox(value: useWallet, activeColor: Colors.green, onChanged: (v) { setState(() => useWallet = v ?? false); _recalculateWalletUsage(); }),
+              Expanded(child: Text("Use Wallet (Available: ₹${_walletBalance.toStringAsFixed(2)})", style: const TextStyle(fontSize: 14))),
+            ]),
             const SizedBox(height: 30),
-            Column(children: [
-              Text("To Pay: ₹${_finalPayable.toStringAsFixed(2)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.payment, color: Colors.white),
-                    label: const Text("Pay Now"),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 14)),
-                    onPressed: _startRazorpayCheckout,
-                  ),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.meeting_room, color: Colors.white),
-                    label: Text(hasAnyDiscount ? "Pay Online Only" : "Pay at Hotel"),
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: hasAnyDiscount ? Colors.grey : Colors.orange,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14)
+            Column(
+              children: [
+                Text("To Pay: ₹${_finalPayable.toStringAsFixed(2)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.payment, color: Colors.white),
+                      label: const Text("Pay Now"),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 14)),
+                      onPressed: _startRazorpayCheckout,
                     ),
-                    onPressed: hasAnyDiscount ? null : () => _confirmPayment("Pay at Hotel"),
-                  ),
-                ],
-              ),
-              if (hasAnyDiscount)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8.0),
-                  child: Text("* Discounts only valid for online payments.",
-                    style: TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                )
-            ],
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.meeting_room, color: Colors.white),
+                      label: const Text("Pay at Hotel"),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
+                      onPressed: () => _confirmPayment("Pay at Hotel"),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),

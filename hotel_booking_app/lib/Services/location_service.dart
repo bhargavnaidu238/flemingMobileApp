@@ -2,7 +2,6 @@ import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class LocationService {
-  // Converts address string (MG Road) to LatLng
   Future<LatLng?> getCoordsFromAddress(String address) async {
     try {
       List<Location> locations = await locationFromAddress(address);

@@ -117,8 +117,6 @@ class _LoginPageState extends State<LoginPage> {
       snack("Login failed");
       return;
     }
-
-    // PERSISTENCE FIX:
     final Map<String, dynamic> userToPass = {
       'userId': res['userId']?.toString() ?? ApiService.getUserId() ?? '',
       'email': res['email'] ?? email,

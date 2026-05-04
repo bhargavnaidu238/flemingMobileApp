@@ -9,12 +9,11 @@ import 'app_filters.dart' as app_filters;
 import 'package:hotel_booking_app/services/api_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:url_launcher/url_launcher.dart'; // Added for Map Navigation
+import 'package:url_launcher/url_launcher.dart';
 
 class HotelsPage extends StatefulWidget {
   final Map<String, dynamic> user;
   final String type;
-  // Added optional parameters to receive location from Home for persistence
   final String? initialCity;
   final double? initialLat;
   final double? initialLng;
@@ -60,7 +59,6 @@ class _HotelsPageState extends State<HotelsPage>
     _animation = Tween<double>(begin: 0.7, end: 1.0).animate(
         CurvedAnimation(parent: _animationController, curve: Curves.easeInOut));
 
-    // Fix 1: Check if location is already provided to avoid re-fetching/resetting
     if (widget.initialCity != null) {
       deviceLocationDisplay = widget.initialCity!;
       userLat = widget.initialLat;
@@ -150,7 +148,6 @@ class _HotelsPageState extends State<HotelsPage>
     });
 
     try {
-      // Logic fix: using unified app_filters to fetch data
       final results = await app_filters.fetchHotelsWithFilters(
         type: widget.type,
         lat: userLat,
@@ -375,7 +372,6 @@ class _HotelsPageState extends State<HotelsPage>
     final hotelState = (hotel['state'] ?? '').toString();
     final hotelPin = (hotel['pincode'] ?? '').toString();
 
-    // Fix: Full Address Display
     String fullDisplayAddress = "$hotelAddress, $hotelCity, $hotelState - $hotelPin";
 
     final hLat = double.tryParse(hotel['latitude']?.toString() ?? '');
