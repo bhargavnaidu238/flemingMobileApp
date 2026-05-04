@@ -198,7 +198,6 @@ class _PgsPageState extends State<PgsPage> with SingleTickerProviderStateMixin {
   Future<void> _openMap(double? lat, double? lng) async {
     if (lat == null || lng == null) return;
 
-    // Using a more robust URI format for Google Maps navigation
     final String googleMapsUrl = "https://www.google.com/maps/search/?api=1&query=$lat,$lng";
     final String appleMapsUrl = "https://maps.apple.com/?q=$lat,$lng";
 

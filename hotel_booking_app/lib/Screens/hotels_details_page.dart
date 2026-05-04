@@ -174,7 +174,6 @@ class _HotelDetailsPageState extends State<HotelDetailsPage> {
     return '${ApiConfig.baseUrl}/hotel_images/$path';
   }
 
-  // FIXED: Navigate strictly using latitude and longitude
   Future<void> _openDirections() async {
     final lat = widget.hotel['latitude'] ?? widget.hotel['Latitude'];
     final lng = widget.hotel['longitude'] ?? widget.hotel['Longitude'];

@@ -384,15 +384,14 @@ class _BookingPageState extends State<BookingPage> {
               Radio<bool>(value: true, groupValue: wantsCustomization, activeColor: const Color(0xFF673AB7), onChanged: (v) async {
                 setState(() => wantsCustomization = v!);
 
-                // FIXED: Passing email and userId correctly from controllers/widget
                 final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
                         builder: (context) => CustomizationPage(
                           hotel: hotel,
                           initialSelection: customizationSelection,
-                          email: emailController.text.trim(), // Passing email from form
-                          userId: widget.userId,             // Passing userId from widget
+                          email: emailController.text.trim(),
+                          userId: widget.userId,
                         )
                     )
                 );
@@ -482,7 +481,6 @@ class _BookingPageState extends State<BookingPage> {
       "gst": gst.toStringAsFixed(2),
       "last_payment_record_id": "",
       "room_type": fullRoomDesc,
-      // Adding new Customization data to bookingData
       "travel_style": customizationSelection['travel_style'] ?? "",
       "meal_preference": customizationSelection['meal_preference'] ?? "",
       "stay_preference": (customizationSelection['stay_preference'] as List?)?.join(", ") ?? "",

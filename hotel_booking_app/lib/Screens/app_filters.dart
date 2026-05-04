@@ -29,7 +29,7 @@ Future<Position?> getCurrentCoordinates() async {
       timeLimit: const Duration(seconds: 8),
     );
   } catch (e) {
-    debugPrint("⚠️ GPS Error: $e");
+    debugPrint("GPS Error: $e");
     return null;
   }
 }
@@ -51,7 +51,7 @@ Future<List<Map<String, dynamic>>> getLocationSuggestions(String query) async {
       }).toList();
     }
   } catch (e) {
-    debugPrint("⚠️ Suggestion Error: $e");
+    debugPrint("Suggestion Error: $e");
   }
   return [];
 }
@@ -73,7 +73,7 @@ Future<Map<String, double>?> getCoordinatesFromCity(String cityName) async {
       }
     }
   } catch (e) {
-    debugPrint("⚠️ Geocoding Error: $e");
+    debugPrint("Geocoding Error: $e");
   }
   return null;
 }

@@ -55,14 +55,12 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
         final List<Map<String, dynamic>> filtered = decoded
             .whereType<Map<String, dynamic>>()
             .where((e) {
-          // Check for mandatory fields; PGs and Hotels both share these
           final hasKeys = e.containsKey('hotel_name') &&
               e.containsKey('check_in_date') &&
               e.containsKey('check_out_date');
           if (!hasKeys) return false;
 
           try {
-            // Robust date parsing for both Hotel and PG date formats
             final checkOutStr = e['check_out_date'].toString().split(" ").first;
             final checkOutDate = DateTime.parse(checkOutStr);
             final checkOutOnlyDate = DateTime(checkOutDate.year, checkOutDate.month, checkOutDate.day);
@@ -73,7 +71,6 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
               return checkOutOnlyDate.isBefore(today);
             }
           } catch (_) {
-            // If date parsing fails, we include it by default to avoid losing data
             return true;
           }
         })
@@ -370,8 +367,6 @@ class _BookingHistoryPageState extends State<BookingHistoryPage>
     final hotelName = booking['hotel_name']?.toString() ?? 'Unknown Hotel';
     final checkIn = booking['check_in_date']?.toString() ?? 'N/A';
     final checkOut = booking['check_out_date']?.toString() ?? 'N/A';
-
-    // Priority for room_type as PGs use this for specific categories
     final roomType = booking['room_type']?.toString() ??
         booking['hotel_type']?.toString() ??
         'Standard';

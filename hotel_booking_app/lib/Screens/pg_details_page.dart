@@ -30,7 +30,7 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
     images = _parseImages(widget.pg['pg_images']);
   }
 
-  // -------------------- NEW: RATING BOTTOM SHEET --------------------
+  // -------------------- RATING BOTTOM SHEET --------------------
   void _showReviewSummary(double avgRating, int totalReviews) {
     showModalBottomSheet(
       context: context,
@@ -176,11 +176,24 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
     return '${ApiConfig.baseUrl}/hotel_images/$path';
   }
 
-  Future<void> _openMap(String? locationData) async {
-    if (locationData == null || locationData.trim().isEmpty) return;
-    Uri url = Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(locationData!)}");
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+  Future<void> _openMap() async {
+    final lat = widget.pg['latitude'];
+    final lng = widget.pg['longitude'];
+
+    if (lat == null || lng == null) {
+      String address = _joinAddress();
+      Uri url = Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(address)}");
+      if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    final Uri googleMapsUrl = Uri.parse("google.navigation:q=$lat,$lng");
+    final Uri appleMapsUrl = Uri.parse("http://maps.apple.com/?q=$lat,$lng");
+
+    if (await canLaunchUrl(googleMapsUrl)) {
+      await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+    } else if (await canLaunchUrl(appleMapsUrl)) {
+      await launchUrl(appleMapsUrl, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -198,14 +211,7 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
     final country = (p['country'] ?? '').toString().trim();
     final pin = (p['pincode'] ?? '').toString().trim();
     final combined = [addr, city, state, country, pin].where((e) => e.isNotEmpty).join(', ');
-    return combined.isNotEmpty ? combined : (p['hotel_location'] ?? '').toString();
-  }
-
-  String _getMapQuery() {
-    final p = widget.pg;
-    final coords = (p['hotel_location'] ?? '').toString().trim();
-    if (coords.contains(',') && RegExp(r'[0-9]').hasMatch(coords)) return coords;
-    return _joinAddress();
+    return combined;
   }
 
   int _toInt(dynamic value) {
@@ -317,7 +323,7 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
                 if (pgType.isNotEmpty) Text(pgType, style: TextStyle(color: Colors.grey[700])),
                 const SizedBox(height: 12),
                 // Location & Contact
-                _buildContactRow(Icons.location_on, address, () => _openMap(_getMapQuery())),
+                _buildContactRow(Icons.location_on, address, () => _openMap()),
                 const SizedBox(height: 10),
                 _buildContactRow(Icons.call, contact, () => _callContact(contact)),
                 const SizedBox(height: 18),
@@ -355,7 +361,7 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
                 const SizedBox(height: 20),
                 // About & Policies
                 const Text("About PG", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                Text(pg["about_this_pg"] ?? pg["description"] ?? "No description available."),
+                Text(pg["about_this_pg"] ?? "No description available."),
                 const SizedBox(height: 16),
                 const Text("Policies", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 _buildPoliciesList(policies),
@@ -403,10 +409,9 @@ class _PgDetailsPageState extends State<PgDetailsPage> {
         ElevatedButton(
           onPressed: () {
             final data = Map<String, dynamic>.from(pg);
-            // FIXED: Using uppercase keys to match BookingPage expectations
             data["Selected_Room_Type"] = selectedRoomType;
             data["Selected_Room_Price"] = selectedRoomPrice;
-            data["room_type"] = selectedRoomType; // Additional sync for DB mapping
+            data["room_type"] = selectedRoomType;
             data["pg_images"] = images;
 
             Navigator.pushNamed(
